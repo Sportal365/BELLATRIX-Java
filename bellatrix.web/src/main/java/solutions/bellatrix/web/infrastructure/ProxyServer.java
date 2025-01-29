@@ -43,7 +43,17 @@ import java.util.List;
 public class ProxyServer {
     private static final ThreadLocal<BrowserMobProxyServer> PROXY_SERVER = ThreadLocal.withInitial(BrowserMobProxyServer::new);
     private static final ThreadLocal<Integer> PORT = new ThreadLocal<>();
-    private static final List<Integer> successHttpStatusesList = Arrays.asList(HttpStatus.SC_OK, HttpStatus.SC_CREATED, HttpStatus.SC_ACCEPTED, HttpStatus.SC_NON_AUTHORITATIVE_INFORMATION, HttpStatus.SC_NO_CONTENT, HttpStatus.SC_RESET_CONTENT, HttpStatus.SC_UNPROCESSABLE_ENTITY, HttpStatus.SC_PARTIAL_CONTENT, HttpStatus.SC_MULTI_STATUS);
+    private static final List<Integer> successHttpStatusesList = Arrays.asList(
+            HttpStatus.SC_OK,
+            HttpStatus.SC_CREATED,
+            HttpStatus.SC_ACCEPTED,
+            HttpStatus.SC_NON_AUTHORITATIVE_INFORMATION,
+            HttpStatus.SC_NO_CONTENT,
+            HttpStatus.SC_RESET_CONTENT,
+            HttpStatus.SC_UNPROCESSABLE_ENTITY,
+            HttpStatus.SC_PARTIAL_CONTENT,
+            HttpStatus.SC_MULTI_STATUS
+    );
 
     private static Gson gson;
 
@@ -123,9 +133,10 @@ public class ProxyServer {
         try {
             webDriverWait.until(d -> {
                 var harEntries = PROXY_SERVER.get().getHar().getLog().getEntries();
-                var areRequestsMade = harEntries.stream().anyMatch(r -> r.getRequest().getUrl().contains(requestPartialUrl) && r.getRequest().getMethod().equals(httpMethod.toString()));
 
-                return areRequestsMade;
+                return harEntries.stream()
+                        .anyMatch(r -> r.getRequest().getUrl().contains(requestPartialUrl) &&
+                                r.getRequest().getMethod().equals(httpMethod.toString()));
             });
         } catch (TimeoutException exception) {
             Log.error(String.format("The expected request with URL '%s' is not loaded!", requestPartialUrl));
