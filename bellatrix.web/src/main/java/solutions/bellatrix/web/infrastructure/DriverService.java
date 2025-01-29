@@ -268,7 +268,7 @@ public class DriverService {
                 chromeHeadlessOptions.setAcceptInsecureCerts(true);
                 chromeHeadlessOptions.addArguments("--log-level=3","--remote-allow-origins=*", "--disable-search-engine-choice-screen");
                 chromeHeadlessOptions.setCapability(CapabilityType.UNHANDLED_PROMPT_BEHAVIOUR, UnexpectedAlertBehaviour.ACCEPT);
-                chromeHeadlessOptions.addArguments("--headless=old");
+                chromeHeadlessOptions.addArguments("--headless=new");
                 System.setProperty("webdriver.chrome.silentOutput", "true");
                 if (shouldCaptureHttpTraffic) chromeHeadlessOptions.setProxy(proxyConfig);
 
