@@ -22,6 +22,8 @@ public enum DeviceName {
     MOBILE_M("MOBILE_M", 320, 873, false, 1),
     MOBILE_L("MOBILE_L", 393, 873, false, 1),
     TABLET("TABLET", 768, 873, false, 1),
+    SURFACE_PRO_7_L("Surface Pro 7 L",915,844,false,1),
+    SURFACE_PRO_7_M("Surface Pro 7 M",445,844,false,1),
     IPHONE_13_PRO_MOBILE("iPhone 13 Pro", 375, 667, true, 2, "Mozilla/5.0 (iPhone; CPU iPhone OS 8_0_2 like Mac OS X) AppleWebKit/600.1.4 (KHTML, like Gecko) Version/8.0 Mobile/12A366 Safari/600.1.4"),
     IPHONE_12_PRO_MOBILE("iPhone 12 Pro", 390, 844, true, 2, "Mozilla/5.0 (iPhone; CPU iPhone OS 8_0_2 like Mac OS X) AppleWebKit/600.1.4 (KHTML, like Gecko) Version/8.0 Mobile/12A366 Safari/600.1.4"),
     IPHONE_SE_MOBILE("iPhone SE", 375, 667, true, 2, "Mozilla/5.0 (iPhone; CPU iPhone OS 8_0_2 like Mac OS X) AppleWebKit/600.1.4 (KHTML, like Gecko) Version/8.0 Mobile/12A366 Safari/600.1.4"),
