@@ -19,6 +19,7 @@ import solutions.bellatrix.web.components.contracts.*;
 public class Anchor extends WebComponent implements ComponentHtml, ComponentText, ComponentHref, ComponentTarget, ComponentRel {
     public static final EventListener<ComponentActionEventArgs> CLICKING = new EventListener<>();
     public static final EventListener<ComponentActionEventArgs> CLICKED = new EventListener<>();
+    //commit
 
     public void click() {
         defaultClick(CLICKING, CLICKED);
