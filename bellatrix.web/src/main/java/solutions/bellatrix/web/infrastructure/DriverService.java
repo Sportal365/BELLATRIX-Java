@@ -252,7 +252,6 @@ public class DriverService {
                 var chromeOptions = new ChromeOptions();
                 addDriverOptions(chromeOptions);
                 addDriverCapabilities(chromeOptions);
-                chromeOptions.addArguments("--proxy-bypass-list=*");
                 chromeOptions.addArguments("--log-level=3","--remote-allow-origins=*", "--disable-search-engine-choice-screen");
                 chromeOptions.setAcceptInsecureCerts(true);
                 chromeOptions.setCapability(CapabilityType.UNHANDLED_PROMPT_BEHAVIOUR, UnexpectedAlertBehaviour.ACCEPT);
@@ -267,7 +266,6 @@ public class DriverService {
                 var chromeHeadlessOptions = new ChromeOptions();
                 addDriverOptions(chromeHeadlessOptions);
                 chromeHeadlessOptions.setAcceptInsecureCerts(true);
-                chromeHeadlessOptions.addArguments("--proxy-bypass-list=*");
                 chromeHeadlessOptions.addArguments("--log-level=3","--remote-allow-origins=*", "--disable-search-engine-choice-screen");
                 chromeHeadlessOptions.setCapability(CapabilityType.UNHANDLED_PROMPT_BEHAVIOUR, UnexpectedAlertBehaviour.ACCEPT);
                 chromeHeadlessOptions.addArguments("--headless=new");
