@@ -252,6 +252,7 @@ public class DriverService {
                 var chromeOptions = new ChromeOptions();
                 addDriverOptions(chromeOptions);
                 addDriverCapabilities(chromeOptions);
+                chromeOptions.addArguments("--proxy-bypass-list=news-tracker-sockets.api.staging.sportal365.com;");
                 chromeOptions.addArguments("--log-level=3","--remote-allow-origins=*", "--disable-search-engine-choice-screen");
                 chromeOptions.setAcceptInsecureCerts(true);
                 chromeOptions.setCapability(CapabilityType.UNHANDLED_PROMPT_BEHAVIOUR, UnexpectedAlertBehaviour.ACCEPT);
@@ -266,6 +267,7 @@ public class DriverService {
                 var chromeHeadlessOptions = new ChromeOptions();
                 addDriverOptions(chromeHeadlessOptions);
                 chromeHeadlessOptions.setAcceptInsecureCerts(true);
+                chromeHeadlessOptions.addArguments("--proxy-bypass-list=news-tracker-sockets.api.staging.sportal365.com;");
                 chromeHeadlessOptions.addArguments("--log-level=3","--remote-allow-origins=*", "--disable-search-engine-choice-screen");
                 chromeHeadlessOptions.setCapability(CapabilityType.UNHANDLED_PROMPT_BEHAVIOUR, UnexpectedAlertBehaviour.ACCEPT);
                 chromeHeadlessOptions.addArguments("--headless=new");
@@ -278,6 +280,7 @@ public class DriverService {
                 var chromeHeadlessOptions = new ChromeOptions();
                 addDriverOptions(chromeHeadlessOptions);
                 chromeHeadlessOptions.setAcceptInsecureCerts(true);
+                chromeHeadlessOptions.addArguments("--proxy-bypass-list=news-tracker-sockets.api.staging.sportal365.com;");
                 chromeHeadlessOptions.addArguments("--log-level=3","--remote-allow-origins=*", "--disable-search-engine-choice-screen");
                 chromeHeadlessOptions.setCapability(CapabilityType.UNHANDLED_PROMPT_BEHAVIOUR, UnexpectedAlertBehaviour.ACCEPT);
 
@@ -299,6 +302,7 @@ public class DriverService {
             case FIREFOX -> {
                 var firefoxOptions = new FirefoxOptions();
                 addDriverOptions(firefoxOptions);
+                firefoxOptions.addArguments("--proxy-bypass-list=news-tracker-sockets.api.staging.sportal365.com;");
                 firefoxOptions.setAcceptInsecureCerts(true);
                 if (shouldCaptureHttpTraffic) firefoxOptions.setProxy(proxyConfig);
                 driver = new FirefoxDriver(firefoxOptions);
@@ -307,18 +311,21 @@ public class DriverService {
                 var firefoxHeadlessOptions = new FirefoxOptions();
                 addDriverOptions(firefoxHeadlessOptions);
                 firefoxHeadlessOptions.setAcceptInsecureCerts(true);
+                firefoxHeadlessOptions.addArguments("--proxy-bypass-list=news-tracker-sockets.api.staging.sportal365.com;");
                 firefoxHeadlessOptions.addArguments("--headless");
                 if (shouldCaptureHttpTraffic) firefoxHeadlessOptions.setProxy(proxyConfig);
                 driver = new FirefoxDriver(firefoxHeadlessOptions);
             }
             case EDGE -> {
                 var edgeOptions = new EdgeOptions();
+                edgeOptions.addArguments("--proxy-bypass-list=news-tracker-sockets.api.staging.sportal365.com;");
                 addDriverOptions(edgeOptions);
                 if (shouldCaptureHttpTraffic) edgeOptions.setProxy(proxyConfig);
                 driver = new EdgeDriver(edgeOptions);
             }
             case EDGE_HEADLESS -> {
                 var edgeOptions = new EdgeOptions();
+                edgeOptions.addArguments("--proxy-bypass-list=news-tracker-sockets.api.staging.sportal365.com;");
                 edgeOptions.addArguments("--headless");
                 edgeOptions.addArguments("--disable-gpu");
                 addDriverOptions(edgeOptions);
