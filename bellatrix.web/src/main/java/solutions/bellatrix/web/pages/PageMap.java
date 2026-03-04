@@ -13,6 +13,7 @@
 
 package solutions.bellatrix.web.pages;
 
+import solutions.bellatrix.web.components.Div;
 import solutions.bellatrix.web.services.App;
 import solutions.bellatrix.web.services.ComponentCreateService;
 
@@ -23,5 +24,9 @@ public abstract class PageMap {
 
     public App app() {
         return new App();
+    }
+
+    public Div cmsShadowHost() {
+        return create().byXPath(Div.class, "//div[@data-shadow-host='sidebar']");
     }
 }
