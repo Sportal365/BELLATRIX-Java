@@ -27,7 +27,6 @@ public abstract class PageMap {
     }
 
     public Div cmsShadowHost() {
-        return create().byXPath(Div.class, "//div[@data-shadow-host='sidebar']");
+        return create().byXPath(Div.class, "//div[@data-shadow-host='sidebar' or @data-shadow-host='top-bar']");
     }
-
 }
