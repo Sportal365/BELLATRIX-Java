@@ -13,11 +13,24 @@
 
 package solutions.bellatrix.web.pages;
 
+import lombok.AllArgsConstructor;
+import lombok.Getter;
 import solutions.bellatrix.web.components.Div;
+import solutions.bellatrix.web.components.shadowdom.ShadowRoot;
 import solutions.bellatrix.web.services.App;
 import solutions.bellatrix.web.services.ComponentCreateService;
 
 public abstract class PageMap {
+
+    @Getter
+    @AllArgsConstructor
+    public enum ShadowHostType {
+        SIDEBAR("sidebar"),
+        TOP_BAR("top-bar");
+
+        private final String value;
+    }
+
     public ComponentCreateService create() {
         return app().create();
     }
@@ -26,8 +39,8 @@ public abstract class PageMap {
         return new App();
     }
 
-    public Div cmsShadowHost() {
-        return create().byXPath(Div.class, "//div[@data-shadow-host='sidebar' or @data-shadow-host='top-bar']");
+    public ShadowRoot cmsShadowRoot(ShadowHostType hostType) {
+        return create().byXPath(Div.class, String.format("//div[@data-shadow-host='%s']", hostType.getValue()))
+                .getShadowRoot();
     }
-
 }
