@@ -147,6 +147,12 @@ public class BrowserService extends WebService {
         ((JavascriptExecutor)getWrappedDriver()).executeScript("window.scrollTo(0, document.body.scrollHeight)");
     }
 
+    //ToDo hhristov 11/03/2026 - This method should be deleted once the CMS refactoring is finished
+    public void scrollToShellWindowBottom() {
+        ((JavascriptExecutor)getWrappedDriver()).executeScript("var c = document.querySelector('.shell__content > div');" +
+                " if (c) c.scrollTop = c.scrollHeight; else window.scrollTo(0, document.body.scrollHeight);");
+    }
+
     public void scrollToTop() {
         ((JavascriptExecutor)getWrappedDriver()).executeScript("window.scrollTo(0, 0)");
     }

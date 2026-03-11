@@ -144,12 +144,6 @@ public class WebComponent extends LayoutComponentValidationsBuilder implements C
         scrollToVisible(getWrappedElement(), false, ScrollPosition.END);
     }
 
-    //ToDo hhristov 11/03/2026 - This method should be deleted once the CMS refactoring is finished
-    public void scrollToShellWindowBottom() {
-        ((JavascriptExecutor)getWrappedDriver()).executeScript("var c = document.querySelector('.shell__content > div');" +
-                " if (c) c.scrollTop = c.scrollHeight; else window.scrollTo(0, document.body.scrollHeight);");
-    }
-
     public void setAttribute(String name, String value) {
         SETTING_ATTRIBUTE.broadcast(new ComponentActionEventArgs(this, value, name));
         javaScriptService.execute(String.format("arguments[0].setAttribute('%s', '%s');", name, value), this);
