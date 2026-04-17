@@ -26,7 +26,8 @@ public abstract class PageMap {
     @AllArgsConstructor
     public enum ShadowHostType {
         SIDEBAR("sidebar"),
-        TOP_BAR("top-bar");
+        TOP_BAR("top-bar"),
+        CMS_TNG("cms-tng");
 
         private final String value;
     }
