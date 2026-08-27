@@ -16,7 +16,6 @@ package solutions.bellatrix.web.pages;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import solutions.bellatrix.web.components.Div;
-import solutions.bellatrix.web.components.shadowdom.ShadowRoot;
 import solutions.bellatrix.web.services.App;
 import solutions.bellatrix.web.services.ComponentCreateService;
 
@@ -40,8 +39,7 @@ public abstract class PageMap {
         return new App();
     }
 
-    public ShadowRoot cmsShadowRoot(ShadowHostType hostType) {
-        return create().byXPath(Div.class, String.format("//div[@data-shadow-host='%s']", hostType.getValue()))
-                .getShadowRoot();
+    public Div cmsShadowRoot(ShadowHostType hostType) {
+        return create().byXPath(Div.class, String.format("//div[@data-micro-app='%s']", hostType.getValue()));
     }
 }
