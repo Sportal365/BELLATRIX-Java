@@ -14,6 +14,7 @@
 package solutions.bellatrix.playwright.services;
 
 import com.google.common.base.Strings;
+import com.microsoft.playwright.Page;
 import solutions.bellatrix.core.utilities.SingletonFactory;
 
 import java.net.MalformedURLException;
@@ -29,7 +30,13 @@ import static java.util.stream.Collectors.toList;
 @SuppressWarnings("ALL")
 public class NavigationService extends WebService {
     public void to(String url) {
-        wrappedBrowser().getCurrentPage().navigate(url);
+        Page page = wrappedBrowser().getCurrentPage();
+        // The browser does nothing for a URL with a fragment that the page already shows, so the page is loaded again.
+        if (url.equals(page.url())) {
+            page.reload();
+        } else {
+            page.navigate(url);
+        }
     }
 
     public void toLocalPage(String filePath) {

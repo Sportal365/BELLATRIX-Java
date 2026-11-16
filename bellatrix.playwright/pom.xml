@@ -11,6 +11,11 @@
 
     <groupId>solutions.bellatrix</groupId>
     <artifactId>bellatrix.playwright</artifactId>
+    <version>1.0</version>
+
+    <properties>
+        <browser.library.version>1.64.0</browser.library.version>
+    </properties>
 
     <dependencies>
         <dependency>
@@ -21,12 +26,12 @@
         <dependency>
             <groupId>com.microsoft.playwright</groupId>
             <artifactId>playwright</artifactId>
-            <version>1.44.0</version>
+            <version>${browser.library.version}</version>
         </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
-            <version>5.10.0</version>
+            <version>5.11.3</version>
         </dependency>
         <dependency>
             <groupId>solutions.bellatrix</groupId>
@@ -44,12 +49,6 @@
             <groupId>solutions.bellatrix</groupId>
             <artifactId>bellatrix.plugins.video</artifactId>
             <version>1.0</version>
-            <scope>compile</scope>
-        </dependency>
-        <dependency>
-            <groupId>net.lightbody.bmp</groupId>
-            <artifactId>browsermob-core</artifactId>
-            <version>2.1.5</version>
             <scope>compile</scope>
         </dependency>
         <dependency>

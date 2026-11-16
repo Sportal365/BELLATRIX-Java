@@ -18,7 +18,8 @@ import com.microsoft.playwright.options.HttpCredentials;
 import lombok.Getter;
 import lombok.Setter;
 
-// ToDo ContextSettings
+import java.util.List;
+
 @Getter @Setter
 public class ContextSettings {
     private boolean shouldSetContextSettings;
@@ -32,4 +33,5 @@ public class ContextSettings {
     private String locale;
     private String timezoneId;
     private String userAgent;
+    private List<String> permissions;
 }

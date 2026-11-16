@@ -18,7 +18,7 @@ import solutions.bellatrix.core.configuration.ConfigurationService;
 import solutions.bellatrix.playwright.configuration.*;
 
 /**
- * Utility class that manages WebSettings, TimeoutSettings, GridSettings, UrlSettings, and ContextSettings. <br>
+ * Utility class that manages WebSettings, TimeoutSettings, UrlSettings, and ContextSettings. <br>
  * As there is no need to create a new *Settings object each time we get an option from the config file; <br>
  * this Utility class will create only once an instance of each Settings class when we try to access them for the first time. <br>
  * Otherwise it will return the cached Settings object.
@@ -27,7 +27,6 @@ import solutions.bellatrix.playwright.configuration.*;
 public class Settings {
     private static WebSettings webSettings;
     private static TimeoutSettings timeoutSettings;
-    private static GridSettings gridSettings;
     private static UrlSettings urlSettings;
     private static ContextSettings contextSettings;
 
@@ -49,16 +48,6 @@ public class Settings {
         timeoutSettings = web().getTimeoutSettings();
 
         return timeoutSettings;
-    }
-
-    public static GridSettings grid() {
-        if (gridSettings != null) {
-            return gridSettings;
-        }
-
-        gridSettings = ConfigurationService.get(GridSettings.class);
-
-        return gridSettings;
     }
 
     public static UrlSettings url() {
