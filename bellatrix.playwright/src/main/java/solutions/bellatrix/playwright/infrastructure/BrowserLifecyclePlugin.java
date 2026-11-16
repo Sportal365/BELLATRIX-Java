@@ -13,184 +13,111 @@
 
 package solutions.bellatrix.playwright.infrastructure;
 
+import solutions.bellatrix.core.plugins.FailureCollector;
 import solutions.bellatrix.core.plugins.Plugin;
 import solutions.bellatrix.core.plugins.TestResult;
-import solutions.bellatrix.core.utilities.DebugInformation;
+import solutions.bellatrix.core.plugins.TimeRecord;
 import solutions.bellatrix.playwright.utilities.Settings;
 
 import java.lang.reflect.Method;
 import java.util.Objects;
 
 public class BrowserLifecyclePlugin extends Plugin {
-    private static final ThreadLocal<BrowserConfiguration> CURRENT_BROWSER_CONFIGURATION;
-    private static final ThreadLocal<BrowserConfiguration> PREVIOUS_BROWSER_CONFIGURATION;
-    private static final ThreadLocal<Boolean> IS_BROWSER_STARTED_DURING_PRE_BEFORE_CLASS;
-    private static final ThreadLocal<Boolean> IS_BROWSER_STARTED_CORRECTLY;
-
-    static {
-        CURRENT_BROWSER_CONFIGURATION = new ThreadLocal<>();
-        PREVIOUS_BROWSER_CONFIGURATION = new ThreadLocal<>();
-        IS_BROWSER_STARTED_DURING_PRE_BEFORE_CLASS = ThreadLocal.withInitial(() -> false);
-        IS_BROWSER_STARTED_CORRECTLY = ThreadLocal.withInitial(() -> false);
-    }
+    private Class<?> testClass;
+    private boolean reuseWithinClass;
+    private boolean previousTestPassed;
 
     @Override
     public void preBeforeClass(Class type) {
-        if (Settings.web().getExecutionType().equals("regular")) {
-            currentConfiguration(getExecutionBrowserClassLevel(type));
-            if (shouldRestartBrowser()) {
-                shutdownBrowser();
-                startBrowser();
-                // TODO: maybe we can simplify and remove this parameter.
-                isBrowserStartedDuringPreBeforeClass(true);
-            } else {
-                isBrowserStartedDuringPreBeforeClass(false);
-            }
-        } else {
-            isBrowserStartedDuringPreBeforeClass(false);
-        }
-
-        super.preBeforeClass(type);
-    }
-
-    @Override
-    public void postAfterClass(Class type) {
-        shutdownBrowser();
-        isBrowserStartedDuringPreBeforeClass(false);
-        super.preAfterClass(type);
+        resetClass();
+        testClass = type;
+        reuseWithinClass = isClassScope(Settings.web().getContextScope());
     }
 
     @Override
     public void preBeforeTest(TestResult testResult, Method memberInfo) {
-        currentConfiguration(getBrowserConfiguration(memberInfo));
-
-        if (!isBrowserStartedDuringPreBeforeClass()) {
-            if (shouldRestartBrowser()) {
-                startBrowser();
-            }
-        }
-
-        isBrowserStartedDuringPreBeforeClass(false);
+        BrowserConfiguration configuration = getBrowserConfiguration(memberInfo);
+        boolean reuseContext = previousTestPassed;
+        previousTestPassed = false;
+        PlaywrightService.startTest(configuration, canRetainContext(configuration), reuseContext);
     }
 
     @Override
-    public void beforeTestFailed(Exception ex) throws Exception {
-        throw ex;
-    }
-
-    @Override
-    public void postAfterTest(TestResult testResult, Method memberInfo, Throwable failedTestException) {
-
-        if (currentConfiguration().getLifecycle() == Lifecycle.REUSE_IF_STARTED) {
-            PlaywrightService.restartBrowserContext();
+    public void postAfterTest(TestResult testResult, TimeRecord timeRecord, Method memberInfo, Throwable failedTestException) {
+        var configuration = PlaywrightService.browserConfiguration();
+        if (configuration == null) {
             return;
         }
 
-        if (currentConfiguration().getLifecycle() ==
-                Lifecycle.RESTART_ON_FAIL && testResult != TestResult.FAILURE) {
-            return;
+        boolean failed = testResult == TestResult.FAILURE || failedTestException != null;
+        var failures = new FailureCollector();
+        if (failed) {
+            failures.run(() -> WebScreenshotPlugin.captureFailure(memberInfo));
         }
-
-        shutdownBrowser();
-    }
-
-    private void shutdownBrowser() {
-        PlaywrightService.close();
-        PREVIOUS_BROWSER_CONFIGURATION.remove();
-    }
-
-    private void startBrowser() {
-        // shutdownBrowser();
-        try {
-            PlaywrightService.start(currentConfiguration());
-            isBrowserStartedCorrectly(true);
-        } catch (Exception ex) {
-            DebugInformation.printStackTrace(ex);
-            isBrowserStartedCorrectly(false);
+        var traced = PlaywrightService.wrappedBrowser();
+        if (traced != null) {
+            failures.run(() -> traced.endTestTrace(failed ? WebScreenshotPlugin.failureTracePath(memberInfo) : null));
         }
+        if (failed || !canRetainContext(configuration)) {
+            failures.run(PlaywrightService::closeContext);
+        }
+        var browser = PlaywrightService.wrappedBrowser();
+        if (configuration.getLifecycle() == Lifecycle.RESTART_EVERY_TIME
+                || (configuration.getLifecycle() == Lifecycle.RESTART_ON_FAIL && failed)
+                || failures.getFailure() != null || (browser != null && !browser.getBrowser().isConnected())) {
+            failures.run(PlaywrightService::close);
+        }
+        previousTestPassed = !failed && failures.getFailure() == null;
 
-        previousConfiguration(currentConfiguration());
-    }
-
-    private boolean shouldRestartBrowser() {
-        // TODO: IsBrowserStartedCorrectly getter?
-        var previousConfiguration = previousConfiguration();
-        var currentConfiguration = currentConfiguration();
-        if (previousConfiguration == null) {
-            return true;
-        } else if (!isBrowserStartedCorrectly()) {
-            return true;
-        } else if (!previousConfiguration.equals(currentConfiguration)) {
-            return true;
-        } else if (currentConfiguration.getLifecycle() == Lifecycle.REUSE_IF_STARTED) {
-            return false;
-        } else if (currentConfiguration.getLifecycle() == Lifecycle.RESTART_EVERY_TIME) {
-            return true;
+        if (failedTestException == null) {
+            failures.throwIfAny();
         } else {
-            return false;
+            new FailureCollector(failedTestException).run(failures::throwIfAny);
         }
     }
 
-    private BrowserConfiguration getBrowserConfiguration(Method memberInfo) {
-        BrowserConfiguration result;
-        var classBrowserType = getExecutionBrowserClassLevel(memberInfo.getDeclaringClass());
-        var methodBrowserType = getExecutionBrowserMethodLevel(memberInfo);
-        result = Objects.requireNonNullElse(methodBrowserType, classBrowserType);
-        String testFullName = String.format("%s.%s", memberInfo.getDeclaringClass().getName(), memberInfo.getName());
-        result.setTestName(testFullName);
-
-        return result;
+    @Override
+    public void postAfterClass(Class type) {
+        resetClass();
     }
 
-    private BrowserConfiguration getExecutionBrowserMethodLevel(Method memberInfo) {
-        var executionBrowserAnnotation = (ExecutionBrowser)memberInfo.getDeclaredAnnotation(ExecutionBrowser.class);
-        if (executionBrowserAnnotation == null) {
-            return null;
+    private void resetClass() {
+        testClass = null;
+        reuseWithinClass = false;
+        previousTestPassed = false;
+        PlaywrightService.close();
+    }
+
+    private static boolean isClassScope(String contextScope) {
+        String scope = Objects.requireNonNullElse(contextScope, "test");
+        return switch (scope) {
+            case "test" -> false;
+            case "class" -> true;
+            default -> throw new IllegalArgumentException("webSettings.contextScope must be 'test' or 'class': " + scope);
+        };
+    }
+
+    private boolean canRetainContext(BrowserConfiguration configuration) {
+        return reuseWithinClass && configuration.getLifecycle() != Lifecycle.RESTART_EVERY_TIME;
+    }
+
+    private BrowserConfiguration getBrowserConfiguration(Method method) {
+        var execution = method.getAnnotation(ExecutionBrowser.class);
+        if (execution == null) {
+            execution = (testClass == null ? method.getDeclaringClass() : testClass).getAnnotation(ExecutionBrowser.class);
         }
 
-        return new BrowserConfiguration(executionBrowserAnnotation.browser(), executionBrowserAnnotation.lifecycle());
-    }
-
-    private BrowserConfiguration getExecutionBrowserClassLevel(Class<?> type) {
-        var executionBrowserAnnotation = (ExecutionBrowser)type.getDeclaredAnnotation(ExecutionBrowser.class);
-        if (executionBrowserAnnotation == null) {
-            var defaultBrowser = BrowserTypes.fromText(Settings.web().getDefaultBrowser());
-            var defaultLifecycle = Lifecycle.fromText(Settings.web().getDefaultLifeCycle());
-            return new BrowserConfiguration(defaultBrowser, defaultLifecycle);
+        var testName = method.getDeclaringClass().getName() + "." + method.getName();
+        if (execution == null) {
+            return new BrowserConfiguration(BrowserTypes.fromText(Settings.web().getDefaultBrowser()),
+                    Lifecycle.fromText(Settings.web().getDefaultLifeCycle()), testName);
         }
 
-        return new BrowserConfiguration(executionBrowserAnnotation.browser(), executionBrowserAnnotation.lifecycle());
-    }
-
-    private BrowserConfiguration currentConfiguration() {
-        return CURRENT_BROWSER_CONFIGURATION.get();
-    }
-
-    private void currentConfiguration(BrowserConfiguration configuration) {
-        CURRENT_BROWSER_CONFIGURATION.set(configuration);
-    }
-
-    private BrowserConfiguration previousConfiguration() {
-        return PREVIOUS_BROWSER_CONFIGURATION.get();
-    }
-
-    private void previousConfiguration(BrowserConfiguration configuration) {
-        PREVIOUS_BROWSER_CONFIGURATION.set(configuration);
-    }
-
-    private Boolean isBrowserStartedDuringPreBeforeClass() {
-        return IS_BROWSER_STARTED_DURING_PRE_BEFORE_CLASS.get();
-    }
-
-    private void isBrowserStartedDuringPreBeforeClass(Boolean bool) {
-        IS_BROWSER_STARTED_DURING_PRE_BEFORE_CLASS.set(bool);
-    }
-
-    private Boolean isBrowserStartedCorrectly() {
-        return IS_BROWSER_STARTED_CORRECTLY.get();
-    }
-
-    private void isBrowserStartedCorrectly(Boolean bool) {
-        IS_BROWSER_STARTED_CORRECTLY.set(bool);
+        var configuration = new BrowserConfiguration(execution.browser(), execution.lifecycle(), testName);
+        configuration.setWidth(execution.width());
+        configuration.setHeight(execution.height());
+        configuration.setVersion(execution.browserVersion());
+        configuration.setDeviceName(execution.deviceName());
+        return configuration;
     }
 }

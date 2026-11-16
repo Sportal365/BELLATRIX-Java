@@ -19,7 +19,6 @@ import solutions.bellatrix.playwright.components.listeners.BddConsoleLogging;
 import solutions.bellatrix.playwright.components.listeners.HighlightElements;
 import solutions.bellatrix.playwright.infrastructure.BrowserLifecyclePlugin;
 import solutions.bellatrix.playwright.infrastructure.LogLifecyclePlugin;
-import solutions.bellatrix.playwright.infrastructure.WebScreenshotPlugin;
 import solutions.bellatrix.playwright.infrastructure.WebVideoPlugin;
 import solutions.bellatrix.playwright.services.App;
 
@@ -31,7 +30,6 @@ public class WebTest extends BaseTest {
     @Override
     protected void configure() {
         addPlugin(BrowserLifecyclePlugin.class);
-        addPlugin(WebScreenshotPlugin.class);
         addPlugin(WebVideoPlugin.class);
         addPlugin(LogLifecyclePlugin.class);
         addListener(BddConsoleLogging.class);

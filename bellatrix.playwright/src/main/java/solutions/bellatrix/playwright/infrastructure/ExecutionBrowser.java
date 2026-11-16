@@ -14,17 +14,20 @@
 package solutions.bellatrix.playwright.infrastructure;
 
 import java.lang.annotation.ElementType;
+import java.lang.annotation.Inherited;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 @Target({ElementType.TYPE, ElementType.METHOD})
 @Retention(RetentionPolicy.RUNTIME)
+@Inherited
 public @interface ExecutionBrowser {
-    BrowserTypes browser() default BrowserTypes.CHROME;
+    BrowserTypes browser() default BrowserTypes.CHROMIUM_HEADLESS;
     Lifecycle lifecycle() default Lifecycle.RESTART_EVERY_TIME;
     int browserVersion() default 0;
     String platform() default "any";
     int width() default 0;
     int height() default 0;
+    DeviceName deviceName() default DeviceName.NOT_SET;
 }
