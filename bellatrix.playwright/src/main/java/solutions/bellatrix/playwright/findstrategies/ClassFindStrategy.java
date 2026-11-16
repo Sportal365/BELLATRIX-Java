@@ -13,8 +13,8 @@
 
 package solutions.bellatrix.playwright.findstrategies;
 
-public class ClassFindStrategy extends AttributeFindStrategy {
+public class ClassFindStrategy extends CssFindStrategy {
     public ClassFindStrategy(String value) {
-        super("class", value);
+        super("[class~='" + value.replace("\\", "\\\\").replace("'", "\\'") + "']");
     }
 }

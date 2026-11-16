@@ -18,6 +18,9 @@ import lombok.Getter;
 import solutions.bellatrix.playwright.components.common.webelement.WebElement;
 import solutions.bellatrix.playwright.findstrategies.utils.By;
 
+import java.util.Arrays;
+import java.util.stream.Collectors;
+
 @Getter
 public class XpathFindStrategy extends FindStrategy {
     private final String value;
@@ -27,14 +30,30 @@ public class XpathFindStrategy extends FindStrategy {
 
     @Override
     public WebElement convert(Page page) {
-        if (!value.startsWith("xpath=")) return get(page, By.LOCATOR, "xpath=" + value);
-        else return get(page, By.LOCATOR, value);
-
+        return get(page, By.LOCATOR, "xpath=" + expression());
     }
 
     @Override
     public WebElement convert(WebElement webElement) {
-        if (!value.startsWith("xpath=")) return get(webElement, By.LOCATOR, "xpath=" + value);
-        else return get(webElement, By.LOCATOR, value);
+        return get(webElement, By.LOCATOR, "xpath=" + relativeExpression());
+    }
+
+    public String relativeExpression() {
+        return expression().replaceFirst("^(\\s*(?:\\(\\s*)*)//", "$1.//");
+    }
+
+    private String expression() {
+        return value.startsWith("xpath=") ? value.substring(6) : value;
+    }
+
+    static String literal(String value) {
+        if (!value.contains("'")) {
+            return "'" + value + "'";
+        }
+        if (!value.contains("\"")) {
+            return "\"" + value + "\"";
+        }
+        return Arrays.stream(value.split("'", -1)).map(part -> "'" + part + "'")
+                .collect(Collectors.joining(", \"'\", ", "concat(", ")"));
     }
 }

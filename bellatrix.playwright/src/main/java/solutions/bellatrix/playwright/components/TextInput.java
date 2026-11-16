@@ -23,17 +23,15 @@ public class TextInput extends WebComponent implements ComponentDisabled, Compon
 
     @Override
     public String getText() {
-        String text = defaultGetText();
-
-        if (text.isEmpty()) {
-            return defaultGetValue();
-        }
-
-        return text;
+        return defaultGetEditableText();
     }
 
     public void setText(String value) {
         defaultSetText(SETTING_TEXT, TEXT_SET, value);
+    }
+
+    public void setSensitiveText(String value) {
+        defaultSetSensitiveText(SETTING_TEXT, TEXT_SET, value);
     }
 
     @Override

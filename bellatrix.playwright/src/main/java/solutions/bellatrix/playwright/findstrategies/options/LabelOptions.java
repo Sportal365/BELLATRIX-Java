@@ -19,6 +19,10 @@ import com.microsoft.playwright.Page;
 import java.util.function.Function;
 
 public class LabelOptions extends Options<Page.GetByLabelOptions, Locator.GetByLabelOptions> {
+    public LabelOptions() {
+        super(new Page.GetByLabelOptions(), new Locator.GetByLabelOptions());
+    }
+
     private void setAbsolute(Function<Page.GetByLabelOptions, Page.GetByLabelOptions> method) {
         invokeAbsolute(method);
     }

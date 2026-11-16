@@ -16,25 +16,25 @@ package solutions.bellatrix.playwright.components.common.validate;
 import lombok.experimental.UtilityClass;
 import org.opentest4j.AssertionFailedError;
 import solutions.bellatrix.core.configuration.ConfigurationService;
+import solutions.bellatrix.core.utilities.SecretMasker;
 import solutions.bellatrix.core.utilities.Wait;
 import solutions.bellatrix.playwright.components.WebComponent;
 import solutions.bellatrix.playwright.configuration.TimeoutSettings;
 import solutions.bellatrix.playwright.configuration.WebSettings;
 import solutions.bellatrix.playwright.services.WebService;
-import solutions.bellatrix.playwright.utilities.DebugLogger;
 import solutions.bellatrix.playwright.utilities.functionalinterfaces.Assertable;
 
 import java.util.function.Supplier;
 
 @UtilityClass
 public class Validator extends WebService {
+    public static final long CONDITION_POLLING_INTERVAL_MILLISECONDS = 100;
     private static final TimeoutSettings timeoutSettings = ConfigurationService.get(WebSettings.class).getTimeoutSettings();
 
     public static void validateCondition(Wait.Comparator condition) {
-        long pollingInterval = timeoutSettings.inMilliseconds().getSleepInterval();
         long timeout = timeoutSettings.inMilliseconds().getValidationsTimeout();
 
-        if (!Wait.forConditionUntilTimeout(condition, timeout, pollingInterval)) {
+        if (!Wait.forConditionUntilTimeout(condition, timeout, CONDITION_POLLING_INTERVAL_MILLISECONDS)) {
             throw new AssertionFailedError(String.format("Assertion failed.\n%s", condition.toString()));
         }
     }
@@ -46,14 +46,23 @@ public class Validator extends WebService {
     }
 
     public static <T, V> void validate(Assertable assertion, WebComponent component, String attributeName, V value, Supplier<T> supplier, String prefix) {
-        var error = String.format("The %s of %s (%s)%n" +
+        try {
+            assertion.perform();
+        } catch (AssertionError failure) {
+            throw new AssertionFailedError(SecretMasker.mask(failureMessage(component, attributeName, value, supplier, prefix)), failure);
+        } catch (Exception exception) {
+            throw new IllegalArgumentException(String.format("%s\n%s", failureMessage(component, attributeName, value, supplier, prefix), exception));
+        }
+    }
+
+    private static <T, V> String failureMessage(WebComponent component, String attributeName, V value, Supplier<T> supplier, String prefix) {
+        T actual = supplier instanceof ObservedSupplier<T> observed ? observed.lastObserved() : supplier.get();
+        return String.format("The %s of %s (%s)%n" +
                         "  Should %s: \"%s\"%n" +
                         "  %" + prefix.length() + "sBut was: \"%s\"%n" +
                         "Test failed on URL: %s",
                 attributeName, component.getComponentClass().getSimpleName(), component.getFindStrategy(),
-                prefix, value, "", supplier.get().toString().replaceAll("%n", "%n" + String.format("%" + (prefix.length() + 12) + "s", " ")),
+                prefix, value, "", actual.toString().replaceAll("%n", "%n" + String.format("%" + (prefix.length() + 12) + "s", " ")),
                 wrappedBrowser().getCurrentPage().url());
-
-        DebugLogger.assertAndLogOnFail(assertion, error);
     }
 }

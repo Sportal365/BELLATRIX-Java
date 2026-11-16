@@ -21,6 +21,11 @@ public abstract class Options<AbsoluteT, RelativeT> {
     protected AbsoluteT pageOptions;
     protected RelativeT locatorOptions;
 
+    protected Options(AbsoluteT pageOptions, RelativeT locatorOptions) {
+        this.pageOptions = pageOptions;
+        this.locatorOptions = locatorOptions;
+    }
+
     public AbsoluteT absolute() {
         return pageOptions;
     }
@@ -30,17 +35,19 @@ public abstract class Options<AbsoluteT, RelativeT> {
     }
 
     protected Options<AbsoluteT, RelativeT> invokeAbsolute(Function<AbsoluteT, AbsoluteT> method) {
-        if (method == null) return null;
-        method.apply(pageOptions);
-        locatorOptions = ConverterService.convert(pageOptions, locatorOptions);
+        if (method != null) {
+            pageOptions = method.apply(pageOptions);
+            locatorOptions = ConverterService.convert(pageOptions, locatorOptions);
+        }
 
         return this;
     }
 
     protected Options<AbsoluteT, RelativeT> invokeRelative(Function<RelativeT, RelativeT> method) {
-        if (method == null) return null;
-        method.apply(locatorOptions);
-        pageOptions = ConverterService.convert(locatorOptions, pageOptions);
+        if (method != null) {
+            locatorOptions = method.apply(locatorOptions);
+            pageOptions = ConverterService.convert(locatorOptions, pageOptions);
+        }
 
         return this;
     }

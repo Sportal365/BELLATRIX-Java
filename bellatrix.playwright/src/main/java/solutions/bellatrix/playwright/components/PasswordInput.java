@@ -28,7 +28,7 @@ public class PasswordInput extends WebComponent implements ComponentDisabled, Co
 
     @Override
     public void setPassword(String value) {
-        defaultSetText(SETTING_PASSWORD, PASSWORD_SET, value);
+        defaultSetSensitiveText(SETTING_PASSWORD, PASSWORD_SET, value);
     }
 
     @Override

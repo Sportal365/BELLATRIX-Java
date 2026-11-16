@@ -15,9 +15,19 @@ package solutions.bellatrix.playwright.components.contracts;
 
 import solutions.bellatrix.playwright.components.WebComponent;
 import solutions.bellatrix.playwright.components.common.validate.ComponentValidator;
+import solutions.bellatrix.playwright.components.enums.CssStyle;
 
 public interface ComponentStyle extends Component {
     String getStyle();
+
+    default String getStyle(CssStyle style) {
+        return getWrappedElement().getCssValue(style.toString());
+    }
+
+    default void validateStyle(CssStyle style, String expectedValue) {
+        ComponentValidator.defaultValidateAttributeIs(
+                (WebComponent) this, () -> getStyle(style), expectedValue, style.toString());
+    }
 
     default void validateStyleIs(String value) {
         ComponentValidator.defaultValidateAttributeIs((WebComponent)this, this::getStyle, value, "style");

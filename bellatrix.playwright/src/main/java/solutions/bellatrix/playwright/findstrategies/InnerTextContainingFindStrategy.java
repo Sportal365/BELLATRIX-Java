@@ -13,17 +13,8 @@
 
 package solutions.bellatrix.playwright.findstrategies;
 
-import com.microsoft.playwright.Page;
-import lombok.Getter;
-import solutions.bellatrix.playwright.components.common.webelement.WebElement;
-import solutions.bellatrix.playwright.findstrategies.options.TextOptions;
-import solutions.bellatrix.playwright.findstrategies.utils.By;
-
-import java.util.regex.Pattern;
-
-@Getter
 public class InnerTextContainingFindStrategy extends XpathFindStrategy {
     public InnerTextContainingFindStrategy(String text) {
-        super(String.format("//*contains(text(), '%s')", text));
+        super("//*[contains(text(), " + literal(text) + ")]");
     }
 }

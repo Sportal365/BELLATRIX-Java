@@ -19,6 +19,10 @@ import com.microsoft.playwright.Page;
 import java.util.function.Function;
 
 public class TitleOptions extends Options<Page.GetByTitleOptions, Locator.GetByTitleOptions> {
+    public TitleOptions() {
+        super(new Page.GetByTitleOptions(), new Locator.GetByTitleOptions());
+    }
+
     private void setAbsolute(Function<Page.GetByTitleOptions, Page.GetByTitleOptions> method) {
         invokeAbsolute(method);
     }

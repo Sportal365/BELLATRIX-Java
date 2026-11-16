@@ -137,12 +137,8 @@ public class Grid extends WebComponent {
 
     public GridCell getCell(int row, int column) {
         String xpath = HtmlService.getAbsoluteXpath(getTableService().getCell(row, column));
-//        if (innerXpath.startsWith(".")) innerXpath = innerXpath.substring(1);
-//        String outerXpath = getCurrentElementXPath();
-//
-//        String fullXpath = Objects.requireNonNullElse(outerXpath, ".") + innerXpath;
 
-        GridCell cell = this.create().byXpath(GridCell.class, xpath);
+        GridCell cell = this.create().byXpath(GridCell.class, "." + xpath);
         setCellMetaData(cell, row, column);
 
         return cell;
@@ -355,7 +351,7 @@ public class Grid extends WebComponent {
         }
 
         var dto = InstanceFactory.create(clazz);
-        var fields = clazz.getFields();
+        var fields = clazz.getDeclaredFields();
         for (var field : fields) {
             var fieldType = field.getType();
 
@@ -366,6 +362,7 @@ public class Grid extends WebComponent {
             Integer headerPosition = getHeaderNamesService().getHeaderPosition(headerInfo.getHeaderName(), controlColumnDataCollection, headerInfo.getOrder());
             if (headerPosition == null) continue;
 
+            field.setAccessible(true);
             var controlData = getControlDataByField(field);
             if (controlData != null && controlData.getComponentClass() != null && WebComponent.class.isAssignableFrom(controlData.getComponentClass())) {
                 var xpath = HtmlService.getAbsoluteXpath(cells.get(headerPosition));
@@ -492,7 +489,7 @@ public class Grid extends WebComponent {
 
     public <TGridModel> Grid setModelColumns(Class<TGridModel> clazz) {
         controlColumnDataCollection = new ArrayList<>();
-        for (var field : clazz.getFields()) {
+        for (var field : clazz.getDeclaredFields()) {
             var headerName = field.isAnnotationPresent(TableHeader.class) ? field.getAnnotation(TableHeader.class).name() : field.getName();
             controlColumnDataCollection.add(new ControlColumnData(headerName));
         }

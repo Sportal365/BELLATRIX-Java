@@ -13,7 +13,6 @@
 
 package solutions.bellatrix.playwright.components.contracts;
 
-import org.openqa.selenium.NotFoundException;
 import solutions.bellatrix.playwright.components.WebComponent;
 import solutions.bellatrix.playwright.components.common.validate.ComponentValidator;
 
@@ -25,10 +24,6 @@ public interface ComponentVisible extends Component {
     }
 
     default void validateNotVisible() {
-        try {
-            ComponentValidator.defaultValidateAttributeFalse((WebComponent)this, this::isVisible, "visible");
-        } catch (NotFoundException e) {
-            // component is not visible
-        }
+        ComponentValidator.defaultValidateAttributeFalse((WebComponent)this, this::isVisible, "visible");
     }
 }

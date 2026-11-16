@@ -45,10 +45,11 @@ public class ComponentValidator {
     public static void defaultValidateAttributeIsNull(WebComponent component, Supplier<Object> supplier, String attributeName) {
         VALIDATING_ATTRIBUTE.broadcast(new ComponentActionEventArgs(component, null, String.format("validating %s's %s is null", component.getComponentName(), attributeName)));
 
+        ObservedSupplier<Object> observed = new ObservedSupplier<>(supplier);
         Assertable assertion = () -> {
-            Validator.validateCondition(() -> supplier.get() == null);
+            Validator.validateCondition(() -> observed.get() == null);
         };
-        Validator.validate(assertion, component, attributeName, "null", supplier, "be");
+        Validator.validate(assertion, component, attributeName, "null", observed, "be");
 
         VALIDATED_ATTRIBUTE.broadcast(new ComponentActionEventArgs(component, null, String.format("validated %s's %s is null", component.getComponentName(), attributeName)));
     }
@@ -67,10 +68,11 @@ public class ComponentValidator {
     public static void defaultValidateAttributeIsSet(WebComponent component, Supplier<String> supplier, String attributeName) {
         VALIDATING_ATTRIBUTE.broadcast(new ComponentActionEventArgs(component, null, String.format("validating %s's %s is set", component.getComponentName(), attributeName)));
 
+        ObservedSupplier<String> observed = new ObservedSupplier<>(supplier);
         Assertable assertion = () -> {
-            Validator.validateCondition(() -> !supplier.get().isEmpty());
+            Validator.validateCondition(() -> !observed.get().isEmpty());
         };
-        Validator.validate(assertion, component, attributeName, "set", supplier, "be");
+        Validator.validate(assertion, component, attributeName, "set", observed, "be");
 
         VALIDATED_ATTRIBUTE.broadcast(new ComponentActionEventArgs(component, null, String.format("validated %s's %s is set", component.getComponentName(), attributeName)));
     }
@@ -78,10 +80,11 @@ public class ComponentValidator {
     public static void defaultValidateAttributeNotSet(WebComponent component, Supplier<String> supplier, String attributeName) {
         VALIDATING_ATTRIBUTE.broadcast(new ComponentActionEventArgs(component, null, String.format("validating %s's %s is NOT set", component.getComponentName(), attributeName)));
 
+        ObservedSupplier<String> observed = new ObservedSupplier<>(supplier);
         Assertable assertion = () -> {
-            Validator.validateCondition(() -> supplier.get().isEmpty());
+            Validator.validateCondition(() -> observed.get().isEmpty());
         };
-        Validator.validate(assertion, component, attributeName, "not set", supplier, "be");
+        Validator.validate(assertion, component, attributeName, "not set", observed, "be");
 
         VALIDATED_ATTRIBUTE.broadcast(new ComponentActionEventArgs(component, null, String.format("validated %s's %s is NOT set", component.getComponentName(), attributeName)));
     }
@@ -89,10 +92,11 @@ public class ComponentValidator {
     public static void defaultValidateAttributeIs(WebComponent component, Supplier<String> supplier, String value, String attributeName) {
         VALIDATING_ATTRIBUTE.broadcast(new ComponentActionEventArgs(component, value, String.format("validating %s's %s is '%s'", component.getComponentName(), attributeName, value)));
 
+        ObservedSupplier<String> observed = new ObservedSupplier<>(supplier);
         Assertable assertion = () -> {
-            Validator.validateCondition(() -> supplier.get().equals(value));
+            Validator.validateCondition(() -> observed.get().equals(value));
         };
-        Validator.validate(assertion, component, attributeName, value, supplier, "be");
+        Validator.validate(assertion, component, attributeName, value, observed, "be");
 
         VALIDATED_ATTRIBUTE.broadcast(new ComponentActionEventArgs(component, value, String.format("validated %s's %s is '%s'", component.getComponentName(), attributeName, value)));
     }
@@ -100,10 +104,11 @@ public class ComponentValidator {
     public void defaultValidateAttributeIs(WebComponent component, Supplier<Number> supplier, Number value, String attributeName) {
         VALIDATING_ATTRIBUTE.broadcast(new ComponentActionEventArgs(component, value.toString(), String.format("validating %s's %s is '%s'", component.getComponentName(), attributeName, value)));
 
+        ObservedSupplier<Number> observed = new ObservedSupplier<>(supplier);
         Assertable assertion = () -> {
-            Validator.validateCondition(() -> supplier.get().equals(value));
+            Validator.validateCondition(() -> observed.get().equals(value));
         };
-        Validator.validate(assertion, component, attributeName, value, supplier, "be");
+        Validator.validate(assertion, component, attributeName, value, observed, "be");
 
         VALIDATED_ATTRIBUTE.broadcast(new ComponentActionEventArgs(component, value.toString(), String.format("validated %s's %s is '%s'", component.getComponentName(), attributeName, value)));
     }
@@ -111,10 +116,11 @@ public class ComponentValidator {
     public static void defaultValidateAttributeContains(WebComponent component, Supplier<String> supplier, String value, String attributeName) {
         VALIDATING_ATTRIBUTE.broadcast(new ComponentActionEventArgs(component, value, String.format("validating %s's %s contains '%s'", component.getComponentName(), attributeName, value)));
 
+        ObservedSupplier<String> observed = new ObservedSupplier<>(supplier);
         Assertable assertion = () -> {
-            Validator.validateCondition(() -> supplier.get().contains(value));
+            Validator.validateCondition(() -> observed.get().contains(value));
         };
-        Validator.validate(assertion, component, attributeName, value, supplier, "contain");
+        Validator.validate(assertion, component, attributeName, value, observed, "contain");
 
         VALIDATED_ATTRIBUTE.broadcast(new ComponentActionEventArgs(component, value, String.format("validated %s's %s contains '%s'", component.getComponentName(), attributeName, value)));
     }
@@ -122,10 +128,11 @@ public class ComponentValidator {
     public static void defaultValidateAttributeNotContains(WebComponent component, Supplier<String> supplier, String value, String attributeName) {
         VALIDATING_ATTRIBUTE.broadcast(new ComponentActionEventArgs(component, value, String.format("validating %s's %s doesn't contain '%s'", component.getComponentName(), attributeName, value)));
 
+        ObservedSupplier<String> observed = new ObservedSupplier<>(supplier);
         Assertable assertion = () -> {
-            Validator.validateCondition(() -> !supplier.get().contains(value));
+            Validator.validateCondition(() -> !observed.get().contains(value));
         };
-        Validator.validate(assertion, component, attributeName, value, supplier, "not contain");
+        Validator.validate(assertion, component, attributeName, value, observed, "not contain");
 
         VALIDATED_ATTRIBUTE.broadcast(new ComponentActionEventArgs(component, value, String.format("validated %s's %s doesn't contain '%s'", component.getComponentName(), attributeName, value)));
     }
@@ -155,10 +162,11 @@ public class ComponentValidator {
     public static <Entity> void defaultValidateCollectionIs(WebComponent component, Supplier<List<Entity>> supplier, List<Entity> value, String attributeName) {
         VALIDATING_ATTRIBUTE.broadcast(new ComponentActionEventArgs(component, value.toString(), String.format("validating %s's %s is '%s'", component.getComponentName(), attributeName, value)));
 
+        ObservedSupplier<List<Entity>> observed = new ObservedSupplier<>(supplier);
         Assertable assertion = () -> {
-            Validator.validateCondition(() -> supplier.get().equals(value));
+            Validator.validateCondition(() -> observed.get().equals(value));
         };
-        Validator.validate(assertion, component, attributeName, value, supplier, "be");
+        Validator.validate(assertion, component, attributeName, value, observed, "be");
 
         VALIDATED_ATTRIBUTE.broadcast(new ComponentActionEventArgs(component, value.toString(), String.format("validated %s's %s is '%s'", component.getComponentName(), attributeName, value)));
     }

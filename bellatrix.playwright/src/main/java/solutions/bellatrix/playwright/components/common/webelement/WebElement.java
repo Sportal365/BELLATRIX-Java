@@ -93,6 +93,14 @@ public class WebElement {
         return new WebElement(wrappedLocator.getByRole(role));
     }
 
+    public WebElement getByTestId(String testId) {
+        return new WebElement(wrappedLocator.getByTestId(testId));
+    }
+
+    public WebElement getByTestId(Pattern testId) {
+        return new WebElement(wrappedLocator.getByTestId(testId));
+    }
+
     public WebElement getByText(String text, GetByTextOptions options) {
         return new WebElement(wrappedLocator.getByText(text, options.convertTo(Locator.GetByTextOptions.class)));
     }
@@ -256,12 +264,21 @@ public class WebElement {
         return wrappedLocator.evaluate(expression);
     }
 
+    public String getCssValue(String propertyName) {
+        var value = (String) wrappedLocator.evaluate(
+                "(element, property) => getComputedStyle(element).getPropertyValue(property)", propertyName);
+        if (propertyName.endsWith("color") && value.startsWith("rgb(")) {
+            return "rgba(" + value.substring(4, value.length() - 1) + ", 1)";
+        }
+        return value;
+    }
+
     public Object evaluateAll(String expression, Object arg) {
         return wrappedLocator.evaluate(expression, arg);
     }
 
     public Object evaluateAll(String expression) {
-        return wrappedLocator.evaluate(expression);
+        return wrappedLocator.evaluateAll(expression);
     }
 
     public JSHandle evaluateHandle(String expression, Object arg, Locator.EvaluateHandleOptions options) {

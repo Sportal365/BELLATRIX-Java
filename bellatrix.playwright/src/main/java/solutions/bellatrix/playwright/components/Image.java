@@ -13,9 +13,18 @@
 
 package solutions.bellatrix.playwright.components;
 
+import solutions.bellatrix.core.plugins.EventListener;
+import solutions.bellatrix.playwright.components.common.ComponentActionEventArgs;
 import solutions.bellatrix.playwright.components.contracts.*;
 
 public class Image extends WebComponent implements ComponentSrc, ComponentHeight, ComponentWidth, ComponentLongDesc, ComponentAlt, ComponentSrcSet, ComponentSizes {
+    public static final EventListener<ComponentActionEventArgs> CLICKING = new EventListener<>();
+    public static final EventListener<ComponentActionEventArgs> CLICKED = new EventListener<>();
+
+    public void click() {
+        defaultClick(CLICKING, CLICKED);
+    }
+
     @Override
     public String getAlt() {
         return defaultGetAltAttribute();

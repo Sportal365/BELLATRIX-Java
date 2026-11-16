@@ -34,6 +34,16 @@ public class CheckBox extends WebComponent implements ComponentDisabled, Compone
         defaultCheck(CHECKING, CHECKED);
     }
 
+    public void check(boolean shouldCheck) {
+        var checking = shouldCheck ? CHECKING : UNCHECKING;
+        var checked = shouldCheck ? CHECKED : UNCHECKED;
+        var event = new ComponentActionEventArgs(this);
+        checking.broadcast(event);
+        var timeout = webSettings.getTimeoutSettings().inMilliseconds().getElementToBeClickableTimeout();
+        wrappedElement.setChecked(shouldCheck, new Locator.SetCheckedOptions().setTimeout(timeout));
+        checked.broadcast(event);
+    }
+
     public void uncheck() {
         defaultUncheck(UNCHECKING, UNCHECKED);
     }
@@ -45,7 +55,7 @@ public class CheckBox extends WebComponent implements ComponentDisabled, Compone
 
     public void uncheck(Function<Locator.UncheckOptions, Locator.UncheckOptions> options) {
         var uncheckOptions = UncheckOptions.create(options);
-        defaultUncheck(uncheckOptions, CHECKING, CHECKED);
+        defaultUncheck(uncheckOptions, UNCHECKING, UNCHECKED);
     }
 
     @Override

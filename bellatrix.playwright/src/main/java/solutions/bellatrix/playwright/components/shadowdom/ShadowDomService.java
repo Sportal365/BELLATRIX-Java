@@ -13,28 +13,11 @@
 
 package solutions.bellatrix.playwright.components.shadowdom;
 
+import com.microsoft.playwright.Playwright;
 import lombok.experimental.UtilityClass;
-import org.jsoup.Jsoup;
-import org.jsoup.nodes.Element;
-import org.jsoup.select.Elements;
-import org.openqa.selenium.By;
-import solutions.bellatrix.core.utilities.HtmlService;
-import solutions.bellatrix.core.utilities.InstanceFactory;
-import solutions.bellatrix.core.utilities.Ref;
-import solutions.bellatrix.playwright.components.WebComponent;
-import solutions.bellatrix.playwright.findstrategies.CssFindStrategy;
-import solutions.bellatrix.playwright.findstrategies.FindStrategy;
-import solutions.bellatrix.playwright.findstrategies.ShadowXpathFindStrategy;
-import solutions.bellatrix.playwright.findstrategies.XpathFindStrategy;
-
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Stack;
 
 @UtilityClass
 public class ShadowDomService {
-    private static final String CHILD_COMBINATOR = " > ";
     private static final String SHADOW_ROOT_TAG = "shadow-root";
 
     public static String getShadowHtml(ShadowRoot shadowRoot) {
@@ -76,203 +59,47 @@ public class ShadowDomService {
         return (String)shadowRoot.evaluate(function);
     }
 
-    public static <TComponent extends WebComponent, TFindStrategy extends FindStrategy> TComponent createInShadowContext(WebComponent parentComponent, Class<TComponent> componentClass, TFindStrategy findStrategy) {
-        var shadowRoots = getShadowRootAncestors(parentComponent);
+    public static void registerSelectors(Playwright playwright) {
+        playwright.selectors().register("shadow", """
+                (() => {
+                    function css(shadowRoot, selector, elements) {
+                        const matches = new Set(shadowRoot.querySelectorAll(selector));
+                        for (const element of shadowRoot.querySelectorAll('*')) {
+                            if (matches.has(element)) elements.push(element);
+                            if (element.shadowRoot) css(element.shadowRoot, selector, elements);
+                        }
+                        return elements;
+                    }
 
-        ShadowRoot initialShadowRoot = shadowRoots.pop();
+                    function xpath(root, expression) {
+                        const shadow = root.shadowRoot;
+                        const document = root.ownerDocument.implementation.createHTMLDocument('');
+                        for (const child of shadow.childNodes) {
+                            document.body.append(document.importNode(child, true));
+                        }
+                        const originals = shadow.querySelectorAll('*');
+                        const copies = new Map(Array.from(document.body.querySelectorAll('*'),
+                            (element, index) => [element, originals[index]]));
+                        const matches = document.evaluate(expression, document.body, null,
+                            XPathResult.ORDERED_NODE_SNAPSHOT_TYPE);
+                        const elements = [];
+                        for (let index = 0; index < matches.snapshotLength; index++) {
+                            const original = copies.get(matches.snapshotItem(index));
+                            if (original) elements.push(original);
+                        }
+                        return elements;
+                    }
 
-        var locatorBuilder = new StringBuilder();
-        while (!shadowRoots.isEmpty()) {
-            locatorBuilder.append(shadowRoots.pop().getFindStrategy().getValue()).append(CHILD_COMBINATOR + SHADOW_ROOT_TAG);
-        }
-        CssFindStrategy fullLocator = new CssFindStrategy(locatorBuilder.toString() + parentComponent.getFindStrategy().getValue());
+                    function queryAll(root, selector) {
+                        if (!root.shadowRoot) return [];
+                        if (selector === 'host') return [root];
+                        if (selector === 'descendants') return css(root.shadowRoot, '*', []);
+                        if (selector.startsWith('css:')) return css(root.shadowRoot, selector.slice(4), []);
+                        return xpath(root, selector.slice('xpath:'.length));
+                    }
 
-        var parentElement = getElement(initialShadowRoot, fullLocator);
-
-        var newElement = getElement(parentElement, findStrategy);
-
-        return createComponent(componentClass, initialShadowRoot, newElement, findStrategy);
-    }
-
-    public static <TComponent extends WebComponent, TFindStrategy extends FindStrategy> List<TComponent> createAllInShadowContext(WebComponent parentComponent, Class<TComponent> componentClass, TFindStrategy findStrategy) {
-        List<TComponent> componentList = new ArrayList<>();
-
-        var shadowRoots = getShadowRootAncestors(parentComponent);
-
-        ShadowRoot initialShadowRoot = shadowRoots.pop();
-
-        var locatorBuilder = new StringBuilder();
-        while (!shadowRoots.isEmpty()) {
-            locatorBuilder.append(shadowRoots.pop().getFindStrategy().getValue()).append(CHILD_COMBINATOR + SHADOW_ROOT_TAG);
-        }
-        CssFindStrategy fullLocator = new CssFindStrategy(locatorBuilder.toString() + parentComponent.getFindStrategy().getValue());
-
-        var parentElement = getElement(initialShadowRoot, fullLocator);
-
-        for (var element : getElements(parentElement, findStrategy)) {
-            componentList.add(createComponent(componentClass, initialShadowRoot, element, findStrategy));
-        }
-
-        return componentList;
-    }
-
-    public static <TComponent extends WebComponent, TFindStrategy extends FindStrategy> TComponent createFromShadowRoot(ShadowRoot shadowRoot, Class<TComponent> componentClass, TFindStrategy findStrategy) {
-        return createComponent(componentClass, shadowRoot, getElement(shadowRoot, findStrategy), findStrategy);
-    }
-
-    public static <TComponent extends WebComponent, TFindStrategy extends FindStrategy> List<TComponent> createAllFromShadowRoot(ShadowRoot shadowRoot, Class<TComponent> componentClass, TFindStrategy findStrategy) {
-        List<TComponent> componentList = new ArrayList<>();
-
-        for (var element : getElements(shadowRoot, findStrategy)) {
-            componentList.add(createComponent(componentClass, shadowRoot, element, findStrategy));
-        }
-
-        return componentList;
-    }
-
-    private static <TComponent extends WebComponent> TComponent createComponent(Class<TComponent> clazz, ShadowRoot initialShadowRoot, Element jsoupNode, FindStrategy findStrategy) {
-        var component = InstanceFactory.create(clazz);
-
-        // passed as a reference, the inside value will change:
-        Ref<ShadowRoot> shadowRoot = new Ref<>(initialShadowRoot);
-
-        // create missing shadow roots between the element and the initial shadow root;
-        // chain them;
-        // return the element's css relative to the innermost shadow root
-        var jsoupNodeCss = buildMissingShadowRootsAndReturnElementRelativeCss(shadowRoot, jsoupNode);
-
-        if (findStrategy instanceof XpathFindStrategy) {
-            component.setFindStrategy(new ShadowXpathFindStrategy(findStrategy.getValue(), jsoupNodeCss));
-        } else {
-            component.setFindStrategy(new CssFindStrategy(jsoupNodeCss));
-        }
-
-        component.setParentComponent(shadowRoot.value);
-        component.setWrappedElement(component.getFindStrategy().convert(component.getParentComponent().getWrappedElement()).first());
-
-        return component;
-    }
-
-    private static String buildMissingShadowRootsAndReturnElementRelativeCss(Ref<ShadowRoot> shadowRoot, Element jsoupNode) {
-        var nestedShadowRootStack = new Stack<Element>();
-
-        // initial absolute xpath, relative to the outermost shadow root element
-        var jsoupNodeCss = HtmlService.convertAbsoluteXpathToCss(HtmlService.getAbsoluteXpath(jsoupNode)).split(CHILD_COMBINATOR);
-
-        // if there are <shadow-root> elements found between the outermost shadow root and the element
-        // populate the Stack<Element>
-        if (tryFindNestedShadowRoots(jsoupNode, nestedShadowRootStack)) {
-            String[] previousCss = null;
-
-            while (!nestedShadowRootStack.isEmpty()) {
-                var parent = nestedShadowRootStack.pop();
-                var css = HtmlService.convertAbsoluteXpathToCss(HtmlService.getAbsoluteXpath(parent)).split(CHILD_COMBINATOR);
-                if (previousCss != null) {
-                    css = removeRedundantSteps(css, previousCss);
-                }
-
-
-                shadowRoot.value = createNestedShadowRoot(shadowRoot.value, cleanFromShadowRootTags(css));
-
-                jsoupNodeCss = removeRedundantSteps(jsoupNodeCss, css);
-
-                previousCss = HtmlService.convertAbsoluteXpathToCss(HtmlService.getAbsoluteXpath(parent)).split(CHILD_COMBINATOR);
-            }
-        }
-
-        return String.join(CHILD_COMBINATOR, cleanFromShadowRootTags(jsoupNodeCss));
-    }
-
-    private static String[] removeRedundantSteps(String[] elementCss, String[] currentCss) {
-        return Arrays.stream(elementCss)
-                .skip(currentCss.length)
-                .toArray(String[]::new);
-    }
-
-    private static String[] cleanFromShadowRootTags(String[] css) {
-        return Arrays.stream(css)
-                .filter(x -> !x.contains(SHADOW_ROOT_TAG))
-                .toArray(String[]::new);
-    }
-
-    private static ShadowRoot createNestedShadowRoot(ShadowRoot parent, String[] locator) {
-        var finalLocator = String.join(CHILD_COMBINATOR, cleanFromShadowRootTags(locator));
-
-        ShadowRoot nestedShadowRoot = InstanceFactory.create(ShadowRoot.class);
-        nestedShadowRoot.setFindStrategy(new CssFindStrategy(finalLocator));
-        nestedShadowRoot.setParentComponent(parent);
-
-        return nestedShadowRoot;
-    }
-
-    private static boolean tryFindNestedShadowRoots(Element jsoupElement, Stack<Element> parentShadowRootStack) {
-        var parent = jsoupElement.parent();
-
-        while (parent != null) {
-            if (parent.tagName().equals(SHADOW_ROOT_TAG)) {
-                parentShadowRootStack.push(parent);
-            }
-
-            parent = parent.parent();
-        }
-
-        return !parentShadowRootStack.isEmpty();
-    }
-
-    /**
-     * Find from root element in shadow root's html.
-     */
-    private static Element getElement(ShadowRoot component, FindStrategy findStrategy) {
-        var doc = Jsoup.parse(component.getHtml());
-
-        return getElement(doc, findStrategy);
-    }
-
-    /**
-     * Find relatively from element.
-     */
-    private static Element getElement(Element element, FindStrategy findStrategy) {
-        return getElements(element, findStrategy).get(0);
-    }
-
-    /**
-     * Find from root element in shadow root's html.
-     */
-    private static List<Element> getElements(ShadowRoot component, FindStrategy findStrategy) {
-        var doc = Jsoup.parse(component.getHtml());
-
-        return getElements(doc, findStrategy);
-    }
-
-    /**
-     * Find relatively from element.
-     */
-    private static List<Element> getElements(Element element, FindStrategy findStrategy) {
-        Elements foundElements = null;
-        var strategyValue = findStrategy.getValue();
-
-        if (findStrategy instanceof CssFindStrategy) {
-            foundElements = element.select(strategyValue);
-        }
-        if (findStrategy instanceof XpathFindStrategy) {
-            foundElements = element.selectXpath(strategyValue);
-        }
-
-        return foundElements;
-    }
-
-    private static Stack<ShadowRoot> getShadowRootAncestors(WebComponent initialComponent) {
-        var component = initialComponent.getParentComponent();
-
-        var shadowRoots = new Stack<ShadowRoot>();
-
-        while (component != null) {
-            if (component instanceof ShadowRoot) {
-                shadowRoots.push((ShadowRoot)component);
-            }
-            component = component.getParentComponent();
-        }
-
-        return shadowRoots;
+                    return { query: (root, selector) => queryAll(root, selector)[0], queryAll };
+                })()
+                """);
     }
 }
