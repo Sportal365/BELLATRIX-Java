@@ -17,125 +17,132 @@ import java.lang.reflect.Method;
 import java.util.*;
 
 public final class PluginExecutionEngine {
-    private final static LinkedHashSet<Plugin> PLUGINS;
+    private static final LinkedHashSet<Plugin> PLUGINS = new LinkedHashSet<>();
+    private static final ThreadLocal<LinkedHashSet<Plugin>> SCOPED_PLUGINS = new ThreadLocal<>();
 
-    static {
-        PLUGINS = new LinkedHashSet<>();
+    public static AutoCloseable openScope() {
+        var previous = SCOPED_PLUGINS.get();
+        SCOPED_PLUGINS.set(new LinkedHashSet<>(plugins()));
+        return () -> {
+            if (previous == null) {
+                SCOPED_PLUGINS.remove();
+            } else {
+                SCOPED_PLUGINS.set(previous);
+            }
+        };
     }
 
     public static void addPlugin(Plugin plugin) {
-        PLUGINS.add(plugin);
+        if (plugin != null) {
+            plugins().add(plugin);
+        }
     }
 
     public static void removePlugin(Plugin plugin) {
-        PLUGINS.remove(plugin);
+        plugins().remove(plugin);
     }
 
     public static void preBeforeClass(Class type) {
-        for (var currentObserver : PLUGINS) {
-            if (currentObserver != null)
-                currentObserver.preBeforeClass(type);
+        for (var plugin : snapshot()) {
+            plugin.preBeforeClass(type);
         }
     }
 
     public static void postBeforeClass(Class type) {
-        for (var currentObserver : PLUGINS) {
-            if (currentObserver != null)
-                currentObserver.postBeforeClass(type);
+        for (var plugin : snapshot()) {
+            plugin.postBeforeClass(type);
         }
     }
 
     public static void beforeClassFailed(Exception e) {
-        for (var currentObserver : PLUGINS) {
-            if (currentObserver != null)
-                currentObserver.beforeClassFailed(e);
-        }
+        notifyAll(plugin -> plugin.beforeClassFailed(e));
     }
 
     public static void preBeforeTest(TestResult result, Method memberInfo) throws Exception {
-        for (var currentObserver : PLUGINS) {
-            if (currentObserver != null)
-                currentObserver.preBeforeTest(result, memberInfo);
+        for (var plugin : snapshot()) {
+            plugin.preBeforeTest(result, memberInfo);
         }
     }
 
     public static void postBeforeTest(TestResult result, Method memberInfo) {
-        for (var currentObserver : PLUGINS) {
-            if (currentObserver != null)
-                currentObserver.postBeforeTest(result, memberInfo);
+        for (var plugin : snapshot()) {
+            plugin.postBeforeTest(result, memberInfo);
         }
     }
 
     public static void beforeTestFailed(Exception e) throws Exception {
-        for (var currentObserver : PLUGINS) {
-            if (currentObserver != null)
-                currentObserver.beforeTestFailed(e);
-        }
+        notifyAll(plugin -> plugin.beforeTestFailed(e));
     }
 
-    /**
-     * Deprecated. <br>
-     * Use {@link #preAfterTest(TestResult, TimeRecord, Method)} as it offers more information about the test.
-     */
     @Deprecated
     public static void preAfterTest(TestResult result, Method memberInfo) throws Exception {
-        for (var currentObserver : PLUGINS) {
-            if (currentObserver != null)
-                currentObserver.preAfterTest(result, memberInfo);
-        }
+        notifyTestCleanup(result, null, (plugin, currentResult, failure) -> plugin.preAfterTest(currentResult, memberInfo));
     }
 
     public static void preAfterTest(TestResult result, TimeRecord timeRecord, Method memberInfo) throws Exception {
-        for (var currentObserver : PLUGINS) {
-            if (currentObserver != null)
-                currentObserver.preAfterTest(result, timeRecord, memberInfo);
-        }
+        notifyTestCleanup(result, null, (plugin, currentResult, failure) -> plugin.preAfterTest(currentResult, timeRecord, memberInfo));
     }
 
-    /**
-     * Deprecated. <br>
-     * Use {@link #postAfterTest(TestResult, TimeRecord, Method, Throwable)} as it offers more information about the test.
-     */
     @Deprecated
     public static void postAfterTest(TestResult result, Method memberInfo, Throwable failedTestException) {
-        for (var currentObserver : PLUGINS) {
-            if (currentObserver != null)
-                currentObserver.postAfterTest(result, memberInfo, failedTestException);
-        }
+        notifyTestCleanup(result, failedTestException, (plugin, currentResult, failure) -> plugin.postAfterTest(currentResult, memberInfo, failure));
     }
 
     public static void postAfterTest(TestResult result, TimeRecord timeRecord, Method memberInfo, Throwable failedTestException) {
-        for (var currentObserver : PLUGINS) {
-            if (currentObserver != null)
-                currentObserver.postAfterTest(result, timeRecord, memberInfo, failedTestException);
-        }
+        notifyTestCleanup(result, failedTestException, (plugin, currentResult, failure) -> plugin.postAfterTest(currentResult, timeRecord, memberInfo, failure));
     }
 
     public static void afterTestFailed(Exception e) {
-        for (var currentObserver : PLUGINS) {
-            if (currentObserver != null)
-                currentObserver.afterTestFailed(e);
-        }
+        notifyAll(plugin -> plugin.afterTestFailed(e));
     }
 
     public static void preAfterClass(Class type) {
-        for (var currentObserver : PLUGINS) {
-            if (currentObserver != null)
-                currentObserver.preAfterClass(type);
-        }
+        notifyAll(plugin -> plugin.preAfterClass(type));
     }
 
     public static void postAfterClass(Class type) {
-        for (var currentObserver : PLUGINS) {
-            if (currentObserver != null)
-                currentObserver.postAfterClass(type);
-        }
+        notifyAll(plugin -> plugin.postAfterClass(type));
     }
 
     public static void afterClassFailed(Exception e) {
-        for (var currentObserver : PLUGINS) {
-            if (currentObserver != null)
-                currentObserver.afterClassFailed(e);
+        notifyAll(plugin -> plugin.afterClassFailed(e));
+    }
+
+    private static LinkedHashSet<Plugin> plugins() {
+        var scoped = SCOPED_PLUGINS.get();
+        return scoped == null ? PLUGINS : scoped;
+    }
+
+    private static List<Plugin> snapshot() {
+        return new ArrayList<>(plugins());
+    }
+
+    private static void notifyAll(PluginAction action) {
+        var failures = new FailureCollector();
+        for (var plugin : snapshot()) {
+            failures.run(() -> action.run(plugin));
         }
+        failures.throwIfAny();
+    }
+
+    private static void notifyTestCleanup(TestResult result, Throwable failedTestException, TestCleanupAction action) {
+        var failures = new FailureCollector();
+        var testFailures = new FailureCollector(failedTestException);
+        for (var plugin : snapshot()) {
+            failures.run(() -> action.run(plugin,
+                    testFailures.getFailure() == null ? result : TestResult.FAILURE, testFailures.getFailure()));
+            testFailures.run(failures::throwIfAny);
+        }
+        failures.throwIfAny();
+    }
+
+    @FunctionalInterface
+    private interface PluginAction {
+        void run(Plugin plugin) throws Exception;
+    }
+
+    @FunctionalInterface
+    private interface TestCleanupAction {
+        void run(Plugin plugin, TestResult result, Throwable failure) throws Exception;
     }
 }

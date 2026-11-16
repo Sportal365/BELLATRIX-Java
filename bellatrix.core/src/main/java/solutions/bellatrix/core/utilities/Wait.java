@@ -22,82 +22,119 @@ public class Wait {
     }
 
     public static void retry(Runnable action, int timesToRetry, long sleepInterval, boolean shouldThrowException, Class<? extends Throwable> ... exceptionsToIgnore) {
-        int repeat = 0;
-        while(repeat <= timesToRetry) {
-            repeat ++;
-            if (retry(action, Duration.ofMillis(50), Duration.ofSeconds(sleepInterval), shouldThrowException, exceptionsToIgnore)) {
-                break;
+        retry(action, timesToRetry, sleepInterval, shouldThrowException, shouldThrowException, exceptionsToIgnore);
+    }
+
+    public static boolean tryRetry(Runnable action, int timesToRetry, long sleepInterval, Class<? extends Throwable> ... exceptionsToIgnore) {
+        return retry(action, timesToRetry, sleepInterval, false, true, exceptionsToIgnore);
+    }
+
+    private static boolean retry(Runnable action, int timesToRetry, long sleepInterval,
+                                 boolean throwOnExhaustion, boolean throwOnUnexpected,
+                                 Class<? extends Throwable> ... exceptionsToIgnore) {
+        if (timesToRetry < 0 || sleepInterval < 0) {
+            throw new IllegalArgumentException("Retry count and sleep interval must not be negative");
+        }
+        long sleepMilliseconds = Duration.ofSeconds(sleepInterval).toMillis();
+        for (int attempt = 0; ; attempt++) {
+            try {
+                action.run();
+                return true;
+            } catch (Exception exception) {
+                if (!isIgnored(exception, exceptionsToIgnore)) {
+                    return finishRetry(exception, throwOnUnexpected);
+                }
+                if (attempt == timesToRetry) {
+                    return finishRetry(exception, throwOnExhaustion);
+                }
+            }
+            if (sleepMilliseconds > 0) {
+                Wait.forMilliseconds(sleepMilliseconds);
             }
         }
     }
 
     public static void retry(Runnable action, Class<? extends Throwable> ... exceptionsToIgnore) {
-        retry(action, Duration.ofSeconds(30), Duration.ofSeconds(1), exceptionsToIgnore);
+        retry(action, Duration.ofSeconds(30), Duration.ofSeconds(1), true, exceptionsToIgnore);
     }
 
     public static boolean retry(Runnable action, Duration timeout, Duration sleepInterval, Boolean shouldThrowException, Class<? extends Throwable> ... exceptionsToIgnore) {
-        long start = System.currentTimeMillis();
-        long end = start + timeout.toMillis();
-        boolean shouldThrow = false;
-        Exception exceptionToThrow = null;
-
-        while(System.currentTimeMillis() < end) {
+        if (timeout.isNegative() || timeout.isZero() || sleepInterval.isNegative()) {
+            throw new IllegalArgumentException("Timeout must be positive and sleep interval must not be negative");
+        }
+        long timeoutNanos = timeout.toNanos();
+        long start = System.nanoTime();
+        Exception lastException;
+        do {
             try {
                 action.run();
                 return true;
-            } catch(Exception exc) {
-
-                shouldThrow = !(Arrays.stream(exceptionsToIgnore).anyMatch(exception -> exception.isInstance(exc)));
-                if (shouldThrow) {
-                    exceptionToThrow = exc;
-                    if (shouldThrowException) {
-                        break;
-                    }
+            } catch (Exception exception) {
+                lastException = exception;
+                if (!isIgnored(exception, exceptionsToIgnore)) {
+                    return finishRetry(exception, shouldThrowException);
                 }
-
-                Wait.forMilliseconds(sleepInterval.toMillis());
             }
-        }
-
-        if (shouldThrow) {
-            if (shouldThrowException) {
-                throw new RuntimeException(exceptionToThrow);
+            long remainingNanos = timeoutNanos - (System.nanoTime() - start);
+            if (remainingNanos <= 0) {
+                break;
             }
-        }
+            long sleepMilliseconds = Math.min(sleepInterval.toMillis(), remainingNanos / 1_000_000);
+            if (sleepMilliseconds > 0) {
+                Wait.forMilliseconds(sleepMilliseconds);
+            }
+        } while (System.nanoTime() - start < timeoutNanos);
 
-        return false;
+        return finishRetry(lastException, shouldThrowException);
     }
 
     public static void retry(Runnable action, Duration sleepInterval, Duration timeout, Class<? extends Throwable> ... exceptionsToIgnore) {
         Wait.retry(action, timeout, sleepInterval, true, exceptionsToIgnore);
     }
 
+    private static boolean isIgnored(Exception exception, Class<? extends Throwable>[] exceptionsToIgnore) {
+        return Arrays.stream(exceptionsToIgnore).anyMatch(type -> type.isInstance(exception));
+    }
+
+    private static boolean finishRetry(Exception exception, boolean shouldThrowException) {
+        if (shouldThrowException) {
+            throw new RuntimeException(exception);
+        }
+        return false;
+    }
+
     public static void forMilliseconds(long millis) {
         try {
+            if (Thread.currentThread().isInterrupted()) {
+                throw new InterruptedException("Wait interrupted");
+            }
             Log.info("Waiting for %s milliseconds".formatted(millis));
             Thread.sleep(millis);
         } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
             throw new RuntimeException(e);
         }
     }
 
     public static boolean forConditionUntilTimeout(Comparator condition, long timeoutInMilliseconds, long pollingIntervalInMilliseconds) {
-        boolean isConditionMet = false;
-
         long startTime = System.currentTimeMillis();
 
-        while (!isConditionMet && (System.currentTimeMillis() - startTime) <= (timeoutInMilliseconds)) {
+        while ((System.currentTimeMillis() - startTime) <= (timeoutInMilliseconds)) {
             try {
                 if (condition.evaluate()) {
-                    isConditionMet = true;
-                } else {
-                    Thread.sleep(pollingIntervalInMilliseconds);
+                    return true;
                 }
             } catch (Exception ignored) {
             }
+            try {
+                Thread.sleep(pollingIntervalInMilliseconds);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException(interrupted);
+            }
         }
 
-        return isConditionMet;
+        return false;
     }
 
     @FunctionalInterface

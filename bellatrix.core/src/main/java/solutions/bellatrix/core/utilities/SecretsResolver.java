@@ -13,6 +13,9 @@
 package solutions.bellatrix.core.utilities;
 
 import java.util.HashMap;
+import java.util.Locale;
+import java.util.Objects;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 public class SecretsResolver {
@@ -32,13 +35,24 @@ public class SecretsResolver {
             return CACHED_SECRETS.get().get(configValue);
         }
 
-        if (configValue.contains("env_")) {
-            var envName = configValue.replace("{env_", "").replace("}", "").toLowerCase();
-            String environmentalVariable = System.getenv(envName);
-            CACHED_SECRETS.get().put(configValue, environmentalVariable);
-            return environmentalVariable;
-        } else {
+        String resolved = resolve(configValue, System::getenv);
+        CACHED_SECRETS.get().put(configValue, resolved);
+        return resolved;
+    }
+
+    static String resolve(String configValue, Function<String, String> environment) {
+        Objects.requireNonNull(configValue, "Configuration value must not be null");
+        if (!configValue.startsWith("{env_") || !configValue.endsWith("}")) {
             return configValue;
         }
+        String name = configValue.substring(5, configValue.length() - 1);
+        String value = environment.apply(name);
+        if (value == null) {
+            value = environment.apply(name.toLowerCase(Locale.ROOT));
+        }
+        if (value == null || value.isBlank()) {
+            throw new IllegalStateException("Required environment variable is missing or blank: " + name);
+        }
+        return value;
     }
 }
