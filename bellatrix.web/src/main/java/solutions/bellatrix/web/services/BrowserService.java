@@ -25,6 +25,7 @@ import org.openqa.selenium.support.ui.WebDriverWait;
 import org.testng.Assert;
 import solutions.bellatrix.core.configuration.ConfigurationService;
 import solutions.bellatrix.core.utilities.Log;
+import solutions.bellatrix.core.utilities.ClipboardManager;
 import solutions.bellatrix.core.utilities.Wait;
 import solutions.bellatrix.web.components.Frame;
 import solutions.bellatrix.web.configuration.WebSettings;
@@ -37,7 +38,9 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.logging.Level;
@@ -104,26 +107,25 @@ public class BrowserService extends WebService {
     }
 
     public void switchToTab(Runnable condition) {
+        switchToTab(condition, Duration.ofSeconds(5), Duration.ofMillis(100));
+    }
+
+    void switchToTab(Runnable condition, Duration timeout, Duration pollingInterval) {
         Wait.retry(() -> {
                     var handles = getWrappedDriver().getWindowHandles();
-                    boolean shouldThrowException = true;
                     for (var currentHandle : handles) {
-                        getWrappedDriver().switchTo().window(currentHandle);
                         try {
+                            getWrappedDriver().switchTo().window(currentHandle);
                             condition.run();
-                            shouldThrowException = false;
-                            break;
-                        } catch (Exception ex) {
-                            // ignore
+                            return;
+                        } catch (TimeoutException | NotFoundException | StaleElementReferenceException ignored) {
                         }
                     }
-
-                    if (shouldThrowException) {
-                        throw new TimeoutException();
-                    }
+                    throw new TimeoutException("No browser tab matched the requested condition.");
                 },
-                5,
-                0,
+                timeout,
+                pollingInterval,
+                true,
                 TimeoutException.class, NotFoundException.class, StaleElementReferenceException.class);
     }
 
@@ -147,7 +149,6 @@ public class BrowserService extends WebService {
         ((JavascriptExecutor)getWrappedDriver()).executeScript("window.scrollTo(0, document.body.scrollHeight)");
     }
 
-    //ToDo hhristov 11/03/2026 - This method should be deleted once the CMS refactoring is finished
     public void scrollToShellWindowBottom() {
         ((JavascriptExecutor)getWrappedDriver()).executeScript("var c = document.querySelector('.shell__content > div');" +
                 " if (c) c.scrollTop = c.scrollHeight; else window.scrollTo(0, document.body.scrollHeight);");
@@ -220,14 +221,24 @@ public class BrowserService extends WebService {
     }
 
     public void waitForAjax() {
+        waitForAjaxToComplete();
+    }
+
+    public boolean waitForAjaxToComplete() {
         long ajaxTimeout = ConfigurationService.get(WebSettings.class).getTimeoutSettings().getWaitForAjaxTimeout();
         long sleepInterval = ConfigurationService.get(WebSettings.class).getTimeoutSettings().getSleepInterval();
+        return waitForAjaxToComplete(Duration.ofSeconds(ajaxTimeout), Duration.ofSeconds(sleepInterval));
+    }
+
+    boolean waitForAjaxToComplete(Duration timeout, Duration pollingInterval) {
         var javascriptExecutor = (JavascriptExecutor)getWrappedDriver();
         AtomicInteger ajaxConnections = new AtomicInteger();
+        AtomicBoolean observed = new AtomicBoolean();
         try {
             Wait.retry(() -> {
                         var numberOfAjaxConnections = javascriptExecutor.executeScript("return !isNaN(window.$openHTTPs) ? window.$openHTTPs : null");
                         if (Objects.nonNull(numberOfAjaxConnections)) {
+                            observed.set(true);
                             ajaxConnections.set(Integer.parseInt(numberOfAjaxConnections.toString()));
                             if (ajaxConnections.get() > 0) {
                                 String message = "Waiting for %s Ajax Connections...".formatted(ajaxConnections);
@@ -239,15 +250,17 @@ public class BrowserService extends WebService {
                             monkeyPatchXMLHttpRequest();
                         }
                     },
-                    Duration.ofSeconds(ajaxTimeout),
-                    Duration.ofSeconds(sleepInterval),
+                    timeout,
+                    pollingInterval,
                     true,
                     TimeoutException.class);
+            return observed.get();
         }
         catch (Exception e) {
             var message = "Timed out waiting for %s Ajax connections.".formatted(ajaxConnections.get());
             Log.error(message);
             injectErrorNotificationToast(message);
+            return false;
         }
     }
 
@@ -550,12 +563,35 @@ public class BrowserService extends WebService {
     }
 
     public String getLastClipboardEntry() {
-        JavaScriptService jsService = new JavaScriptService();
-        Object lastCopyObject = jsService.execute("return await window.navigator.clipboard.readText();");
-        if (lastCopyObject != null) {
-            return lastCopyObject.toString();
-        } else {
-            return "";
+        if ("regular".equals(ConfigurationService.get(WebSettings.class).getExecutionType())) {
+            return ClipboardManager.getLastEntity();
         }
+        return executeClipboardOperation(false, "");
+    }
+
+    public void copyTextToClipboard(String text) {
+        Objects.requireNonNull(text, "Clipboard text must not be null");
+        if ("regular".equals(ConfigurationService.get(WebSettings.class).getExecutionType())) {
+            ClipboardManager.copyTextToClipboard(text);
+            return;
+        }
+        executeClipboardOperation(true, text);
+    }
+
+    private String executeClipboardOperation(boolean write, String text) {
+        var result = (Map<?, ?>) javascriptExecutor.executeAsyncScript("""
+                const [write, text, done] = arguments;
+                if (!navigator.clipboard) {
+                    done({error: 'Clipboard API is unavailable; a secure browser context is required'});
+                    return;
+                }
+                const operation = write ? navigator.clipboard.writeText(text) : navigator.clipboard.readText();
+                operation.then(value => done({value: value ?? ''}),
+                    error => done({error: error.name + ': ' + error.message}));
+                """, write, text);
+        if (result.containsKey("error")) {
+            throw new WebDriverException("Browser clipboard operation failed: " + result.get("error"));
+        }
+        return (String) result.get("value");
     }
 }

@@ -23,9 +23,12 @@ import org.openqa.selenium.firefox.FirefoxDriver;
 import org.openqa.selenium.firefox.FirefoxOptions;
 import org.openqa.selenium.ie.InternetExplorerDriver;
 import org.openqa.selenium.ie.InternetExplorerOptions;
+import org.openqa.selenium.remote.AbstractDriverOptions;
 import org.openqa.selenium.remote.CapabilityType;
 import org.openqa.selenium.remote.DesiredCapabilities;
 import org.openqa.selenium.remote.RemoteWebDriver;
+import org.openqa.selenium.remote.LocalFileDetector;
+import org.openqa.selenium.chromium.ChromiumOptions;
 import org.openqa.selenium.safari.SafariDriver;
 import org.openqa.selenium.safari.SafariOptions;
 import solutions.bellatrix.core.configuration.ConfigurationService;
@@ -49,6 +52,8 @@ import java.util.regex.Pattern;
 import static io.restassured.RestAssured.given;
 
 public class DriverService {
+    private static final Set<WebDriver> ACTIVE_DRIVERS = Collections.synchronizedSet(
+            Collections.newSetFromMap(new IdentityHashMap<>()));
     private static final ThreadLocal<Boolean> DISPOSED = ThreadLocal.withInitial(() -> true);
     private static final ThreadLocal<BrowserConfiguration> BROWSER_CONFIGURATION;
     private static final ThreadLocal<HashMap<String, String>> CUSTOM_DRIVER_OPTIONS;
@@ -61,6 +66,12 @@ public class DriverService {
         CUSTOM_DRIVER_OPTIONS.set(new HashMap<>());
         BROWSER_CONFIGURATION = new ThreadLocal<>();
         WRAPPED_DRIVER = new ThreadLocal<>();
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> ACTIVE_DRIVERS.forEach(driver -> {
+            try {
+                driver.quit();
+            } catch (RuntimeException ignored) {
+            }
+        }), "browser-cleanup"));
     }
 
     public static HashMap<String, String> getCustomDriverOptions() {
@@ -75,6 +86,19 @@ public class DriverService {
         return WRAPPED_DRIVER.get();
     }
 
+    public static boolean isSessionUsable() {
+        var driver = WRAPPED_DRIVER.get();
+        if (driver == null || DISPOSED.get()) {
+            return false;
+        }
+        try {
+            driver.getCurrentUrl();
+            return true;
+        } catch (WebDriverException exception) {
+            return false;
+        }
+    }
+
     public static void setWrappedDriver(WebDriver driver) {
         WRAPPED_DRIVER.set(driver);
     }
@@ -84,10 +108,12 @@ public class DriverService {
     }
 
     public static WebDriver start(BrowserConfiguration configuration) {
-        if (DISPOSED.get()) {
-            BROWSER_CONFIGURATION.set(configuration);
-            DISPOSED.set(false);
-            WebDriver driver;
+        if (!DISPOSED.get()) {
+            return WRAPPED_DRIVER.get();
+        }
+        BROWSER_CONFIGURATION.set(configuration);
+        WebDriver driver = null;
+        try {
             var webSettings = ConfigurationService.get(WebSettings.class);
             var executionType = webSettings.getExecutionType();
             if (executionType.equals("regular")) {
@@ -106,6 +132,7 @@ public class DriverService {
                 driver = initializeDriverCloudGridMode(gridSettings.get());
             }
 
+            ACTIVE_DRIVERS.add(driver);
             driver.manage().timeouts().pageLoadTimeout(Duration.ofSeconds(ConfigurationService.get(WebSettings.class).getTimeoutSettings().getPageLoadTimeout()));
             driver.manage().timeouts().scriptTimeout(Duration.ofSeconds(ConfigurationService.get(WebSettings.class).getTimeoutSettings().getScriptTimeout()));
 
@@ -118,9 +145,20 @@ public class DriverService {
 
             Log.info(String.format("Window resized to dimensions: %s", driver.manage().window().getSize().toString()));
             WRAPPED_DRIVER.set(driver);
+            DISPOSED.set(false);
 
             return driver;
-        } else return WRAPPED_DRIVER.get();
+        } catch (RuntimeException | Error exception) {
+            try {
+                releaseDriver(driver);
+            } catch (RuntimeException cleanupException) {
+                exception.addSuppressed(cleanupException);
+            } finally {
+                WRAPPED_DRIVER.remove();
+                DISPOSED.set(true);
+            }
+            throw exception;
+        }
     }
 
     private static WebDriver initializeDriverCloudGridMode(GridSettings gridSettings) {
@@ -162,7 +200,6 @@ public class DriverService {
         // }
 
         addGridOptions(options, gridSettings);
-
         caps.setCapability(gridSettings.getOptionsName(), options);
         WebDriver driver = null;
         try {
@@ -176,64 +213,76 @@ public class DriverService {
     }
 
     private static WebDriver initializeDriverGridMode(GridSettings gridSettings) {
-        var caps = new DesiredCapabilities();
-        if (BROWSER_CONFIGURATION.get().getPlatform() != Platform.ANY) {
-            caps.setCapability("platform", BROWSER_CONFIGURATION.get().getPlatform());
-        }
-
-        if (BROWSER_CONFIGURATION.get().getVersion() != 0) {
-            caps.setCapability("version", BROWSER_CONFIGURATION.get().getVersion());
-        } else {
-            caps.setCapability("version", "latest");
-        }
-
-        switch (BROWSER_CONFIGURATION.get().getBrowser()) {
-            case CHROME_HEADLESS:
-            case CHROME: {
+        var configuration = BROWSER_CONFIGURATION.get();
+        AbstractDriverOptions<?> options;
+        switch (configuration.getBrowser()) {
+            case CHROME, CHROME_HEADLESS, CHROME_MOBILE -> {
                 var chromeOptions = new ChromeOptions();
-                addGridOptions(chromeOptions, gridSettings);
-                caps.setCapability(ChromeOptions.CAPABILITY, chromeOptions);
-                break;
+                chromeOptions.addArguments("--proxy-bypass-list=news-tracker-sockets.api.staging.sportal365.com");
+                if (configuration.getBrowser() == Browser.CHROME_HEADLESS) {
+                    chromeOptions.addArguments("--headless=new");
+                }
+                if (configuration.getBrowser() == Browser.CHROME_MOBILE) {
+                    chromeOptions.setExperimentalOption("mobileEmulation", mobileEmulation(configuration.getDeviceName()));
+                }
+                options = chromeOptions;
             }
-            case FIREFOX_HEADLESS:
-            case FIREFOX: {
+            case FIREFOX, FIREFOX_HEADLESS -> {
                 var firefoxOptions = new FirefoxOptions();
-                addGridOptions(firefoxOptions, gridSettings);
-                caps.setCapability(ChromeOptions.CAPABILITY, firefoxOptions);
-                break;
+                if (configuration.getBrowser() == Browser.FIREFOX_HEADLESS) {
+                    firefoxOptions.addArguments("-headless");
+                }
+                options = firefoxOptions;
             }
-            case EDGE_HEADLESS:
-            case EDGE: {
+            case EDGE, EDGE_HEADLESS -> {
                 var edgeOptions = new EdgeOptions();
-                addGridOptions(edgeOptions, gridSettings);
-                caps.setCapability(ChromeOptions.CAPABILITY, edgeOptions);
-                break;
+                if (configuration.getBrowser() == Browser.EDGE_HEADLESS) {
+                    edgeOptions.addArguments("--headless=new");
+                }
+                options = edgeOptions;
             }
-            case SAFARI: {
-                var safariOptions = new SafariOptions();
-                addGridOptions(safariOptions, gridSettings);
-                caps.setCapability(ChromeOptions.CAPABILITY, safariOptions);
-                break;
-            }
-            case INTERNET_EXPLORER: {
-                var ieOptions = new InternetExplorerOptions();
-                addGridOptions(ieOptions, gridSettings);
-                caps.setCapability(ChromeOptions.CAPABILITY, ieOptions);
-                break;
-            }
+            case SAFARI -> options = new SafariOptions();
+            case INTERNET_EXPLORER -> options = new InternetExplorerOptions();
+            default -> throw new IllegalArgumentException("Unsupported Grid browser: " + configuration.getBrowser());
         }
+        if (configuration.getPlatform() != null && configuration.getPlatform() != Platform.ANY) {
+            options.setPlatformName(configuration.getPlatform().toString());
+        }
+        if (configuration.getVersion() != 0) {
+            options.setBrowserVersion(String.valueOf(configuration.getVersion()));
+        }
+        addDriverOptions(options);
+        addGridOptions(options, gridSettings);
+        if (options instanceof ChromiumOptions<?> chromiumOptions) {
+            Map<String, Object> prefs = new HashMap<>();
+            String capability = options instanceof ChromeOptions ? ChromeOptions.CAPABILITY : EdgeOptions.CAPABILITY;
+            if (chromiumOptions.getCapability(capability) instanceof Map<?, ?> vendorOptions
+                    && vendorOptions.get("prefs") instanceof Map<?, ?> configuredPrefs) {
+                configuredPrefs.forEach((key, value) -> prefs.put(key.toString(), value));
+            }
+            prefs.put("profile.default_content_setting_values.clipboard", 1);
+            chromiumOptions.setExperimentalOption("prefs", prefs);
+        }
+        options.setAcceptInsecureCerts(true);
+        options.setUnhandledPromptBehaviour(UnexpectedAlertBehaviour.ACCEPT);
 
-        WebDriver driver = null;
+        boolean captureHttpTraffic = ConfigurationService.get(WebSettings.class).getShouldCaptureHttpTraffic();
+        if (captureHttpTraffic) {
+            ProxyServer.init();
+            options.setProxy(ClientUtil.createSeleniumProxy(ProxyServer.get()));
+            ProxyServer.newHar();
+        }
         try {
-            var gridUrl = gridSettings.getUrl();
-            var url  = getUrl(gridUrl);
-
-            driver = new RemoteWebDriver(new URI(url).toURL(), caps);
+            var driver = new RemoteWebDriver(new URI(getUrl(gridSettings.getUrl())).toURL(), options);
+            driver.setFileDetector(new LocalFileDetector());
+            return driver;
         } catch (MalformedURLException | URISyntaxException e) {
-            DebugInformation.printStackTrace(e);
+            if (captureHttpTraffic) ProxyServer.close();
+            throw new IllegalArgumentException("Invalid Grid URL", e);
+        } catch (RuntimeException e) {
+            if (captureHttpTraffic) ProxyServer.close();
+            throw e;
         }
-
-        return driver;
     }
 
     private static WebDriver initializeDriverRegularMode() {
@@ -284,16 +333,7 @@ public class DriverService {
                 chromeHeadlessOptions.addArguments("--log-level=3","--remote-allow-origins=*", "--disable-search-engine-choice-screen");
                 chromeHeadlessOptions.setCapability(CapabilityType.UNHANDLED_PROMPT_BEHAVIOUR, UnexpectedAlertBehaviour.ACCEPT);
 
-                Map<String, Object> deviceMetrics = new HashMap<>();
-                deviceMetrics.put("width", BROWSER_CONFIGURATION.get().getDeviceName().getWidth());
-                deviceMetrics.put("height", BROWSER_CONFIGURATION.get().getDeviceName().getHeight());
-                deviceMetrics.put("pixelRatio", BROWSER_CONFIGURATION.get().getDeviceName().getScaleFactor());
-
-                Map<String, Object> mobileEmulation = new HashMap<>();
-                mobileEmulation.put("deviceMetrics", deviceMetrics);
-                mobileEmulation.put("userAgent", "Mozilla/5.0 (Linux; Android 4.2.1; en-us; Nexus 5 Build/JOP40D) AppleWebKit/535.19 (KHTML, like Gecko) Chrome/18.0.1025.166 Mobile Safari/535.19");
-
-                chromeHeadlessOptions.setExperimentalOption("mobileEmulation", mobileEmulation);
+                chromeHeadlessOptions.setExperimentalOption("mobileEmulation", mobileEmulation(BROWSER_CONFIGURATION.get().getDeviceName()));
                 System.setProperty("webdriver.chrome.silentOutput", "true");
                 if (shouldCaptureHttpTraffic) chromeHeadlessOptions.setProxy(proxyConfig);
 
@@ -500,24 +540,47 @@ public class DriverService {
         return result;
     }
 
+    private static Map<String, Object> mobileEmulation(DeviceName device) {
+        if (device == null || device == DeviceName.NOT_SET) {
+            throw new IllegalArgumentException("Mobile Chrome requires a device profile");
+        }
+        Map<String, Object> deviceMetrics = new HashMap<>();
+        deviceMetrics.put("width", device.getWidth());
+        deviceMetrics.put("height", device.getHeight());
+        deviceMetrics.put("pixelRatio", device.getScaleFactor());
+        Map<String, Object> mobileEmulation = new HashMap<>();
+        mobileEmulation.put("deviceMetrics", deviceMetrics);
+        mobileEmulation.put("userAgent", "Mozilla/5.0 (Linux; Android 4.2.1; en-us; Nexus 5 Build/JOP40D) AppleWebKit/535.19 (KHTML, like Gecko) Chrome/18.0.1025.166 Mobile Safari/535.19");
+        return mobileEmulation;
+    }
+
+    private static void releaseDriver(WebDriver driver) {
+        try {
+            if (driver != null) {
+                driver.quit();
+            }
+        } catch (NoSuchSessionException ignored) {
+        } finally {
+            if (driver != null) {
+                ACTIVE_DRIVERS.remove(driver);
+            }
+            if (ProxyServer.get().isStarted()) {
+                ProxyServer.close();
+            }
+        }
+    }
+
     public static void close() {
         if (DISPOSED.get()) {
             return;
         }
 
-        if (WRAPPED_DRIVER.get() != null) {
-            DebugInformation.debugInfo("SHUTTING DOWN WRAPPED_DRIVER");
-            WRAPPED_DRIVER.get().quit();
-            if (CUSTOM_DRIVER_OPTIONS.get() != null) {
-                CUSTOM_DRIVER_OPTIONS.get().clear();
-            }
-        }
-
-        boolean shouldCaptureHttpTraffic = ConfigurationService.get(WebSettings.class).getShouldCaptureHttpTraffic();
-        if (shouldCaptureHttpTraffic) {
-            ProxyServer.close();
-        }
-
+        var driver = WRAPPED_DRIVER.get();
+        WRAPPED_DRIVER.remove();
         DISPOSED.set(true);
+        if (CUSTOM_DRIVER_OPTIONS.get() != null) {
+            CUSTOM_DRIVER_OPTIONS.get().clear();
+        }
+        releaseDriver(driver);
     }
 }

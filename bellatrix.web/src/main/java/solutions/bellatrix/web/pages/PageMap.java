@@ -20,7 +20,6 @@ import solutions.bellatrix.web.services.App;
 import solutions.bellatrix.web.services.ComponentCreateService;
 
 public abstract class PageMap {
-
     @Getter
     @AllArgsConstructor
     public enum ShadowHostType {
