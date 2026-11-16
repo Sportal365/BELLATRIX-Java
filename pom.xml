@@ -13,24 +13,8 @@
         <module>bellatrix.core</module>
         <module>bellatrix.plugins.screenshots</module>
         <module>bellatrix.plugins.video</module>
-        <module>bellatrix.plugins.jira.zephyr</module>
-        <module>bellatrix.plugins.visual-regression-tracker</module>
-        <module>bellatrix.web</module>
         <module>bellatrix.playwright</module>
-        <module>bellatrix.desktop</module>
-        <module>bellatrix.android</module>
-        <module>bellatrix.ios</module>
         <module>bellatrix.api</module>
-        <!-- Framework Tests -->
-        <module>framework-tests/bellatrix.web.tests</module>
-        <module>framework-tests/bellatrix.desktop.tests</module>
-        <module>framework-tests/bellatrix.android.tests</module>
-        <module>framework-tests/bellatrix.ios.tests</module>
-        <module>framework-tests/bellatrix.playwright.tests</module>
-        <!-- Getting Started -->
-        <module>getting-started/bellatrix.web.getting.started</module>
-        <module>getting-started/bellatrix.playwright.getting.started</module>
-        <module>bellatrix.sms</module>
     </modules>
 
     <properties>
@@ -56,6 +40,30 @@
     </dependencies>
 
     <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-resources-plugin</artifactId>
+                    <version>3.5.0</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>3.16.0</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-jar-plugin</artifactId>
+                    <version>3.5.1</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-install-plugin</artifactId>
+                    <version>3.2.0</version>
+                </plugin>
+            </plugins>
+        </pluginManagement>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -71,4 +79,54 @@
             </plugin>
         </plugins>
     </build>
+    <profiles>
+        <profile>
+            <id>additional-platforms</id>
+            <modules>
+                <module>bellatrix.plugins.jira.zephyr</module>
+                <module>bellatrix.plugins.visual-regression-tracker</module>
+                <module>bellatrix.web</module>
+                <module>bellatrix.desktop</module>
+                <module>bellatrix.android</module>
+                <module>bellatrix.ios</module>
+                <module>framework-tests/bellatrix.web.tests</module>
+                <module>framework-tests/bellatrix.desktop.tests</module>
+                <module>framework-tests/bellatrix.android.tests</module>
+                <module>framework-tests/bellatrix.ios.tests</module>
+                <module>framework-tests/bellatrix.playwright.tests</module>
+                <module>getting-started/bellatrix.web.getting.started</module>
+                <module>getting-started/bellatrix.playwright.getting.started</module>
+                <module>bellatrix.sms</module>
+            </modules>
+        </profile>
+        <profile>
+            <id>browser-runtime</id>
+            <properties>
+                <test.groups>unit</test.groups>
+                <test.unit.skip>${skipTests}</test.unit.skip>
+                <surefire.version>3.5.2</surefire.version>
+                <maven.build.timestamp.format>yyyyMMdd'T'HHmmssSSS</maven.build.timestamp.format>
+                <test.run.id>${maven.build.timestamp}</test.run.id>
+            </properties>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <groups>${test.groups}</groups>
+                            <skipTests>${test.unit.skip}</skipTests>
+                            <testFailureIgnore>false</testFailureIgnore>
+                            <disableXmlReport>false</disableXmlReport>
+                            <reuseForks>false</reuseForks>
+                            <reportsDirectory>${maven.multiModuleProjectDirectory}/.local-test-results/${test.run.id}/${project.artifactId}/unit</reportsDirectory>
+                            <systemPropertyVariables>
+                                <junit.jupiter.execution.parallel.enabled>false</junit.jupiter.execution.parallel.enabled>
+                            </systemPropertyVariables>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

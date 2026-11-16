@@ -25,6 +25,11 @@
 
     <dependencies>
         <dependency>
+            <groupId>io.appium</groupId>
+            <artifactId>java-client</artifactId>
+            <version>8.3.0</version>
+        </dependency>
+        <dependency>
             <groupId>solutions.bellatrix</groupId>
             <artifactId>bellatrix.core</artifactId>
             <version>1.0</version>
