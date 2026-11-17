@@ -237,6 +237,10 @@ public class BrowserService extends WebService {
         return page().content();
     }
 
+    public void setSize(int width, int height) {
+        page().setViewportSize(width, height);
+    }
+
     public void scrollToBottom() {
         wrappedBrowser().getCurrentPage().evaluate("window.scrollTo(0, document.body.scrollHeight)");
     }

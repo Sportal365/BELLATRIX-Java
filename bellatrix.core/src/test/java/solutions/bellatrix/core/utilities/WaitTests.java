@@ -164,10 +164,11 @@ class WaitTests {
     void durationRetryThrowsIgnoredFailureOnTimeoutAndCapsSleep() {
         IllegalStateException failure = new IllegalStateException("Not ready");
 
-        RuntimeException thrown = assertTimeoutPreemptively(Duration.ofMillis(500),
+        // The second sleep is capped at the 100 ms left: about 1 s in all, 1.8 s if the sleep were not capped.
+        RuntimeException thrown = assertTimeoutPreemptively(Duration.ofMillis(1500),
                 () -> assertThrows(RuntimeException.class, () -> Wait.retry(() -> {
                     throw failure;
-                }, Duration.ofMillis(20), Duration.ofSeconds(10), true, IllegalStateException.class)));
+                }, Duration.ofMillis(1000), Duration.ofMillis(900), true, IllegalStateException.class)));
 
         assertSame(failure, thrown.getCause());
     }
@@ -207,14 +208,14 @@ class WaitTests {
     }
 
     @Test
-    void durationOverloadWithoutBooleanPreservesSleepThenTimeoutOrder() {
+    void durationOverloadWithoutBooleanTakesTimeoutThenSleep() {
         AtomicInteger attempts = new AtomicInteger();
 
         Wait.retry(() -> {
             if (attempts.incrementAndGet() == 1) {
                 throw new IllegalStateException("Not ready");
             }
-        }, Duration.ofMillis(1), Duration.ofSeconds(1), IllegalStateException.class);
+        }, Duration.ofSeconds(1), Duration.ofMillis(1), IllegalStateException.class);
 
         assertEquals(2, attempts.get());
     }
@@ -289,5 +290,9 @@ class WaitTests {
                 () -> Wait.retry(unexpectedAction, Duration.ZERO, Duration.ZERO, true));
         assertThrows(IllegalArgumentException.class,
                 () -> Wait.retry(unexpectedAction, Duration.ofSeconds(1), Duration.ofMillis(-1), true));
+        assertThrows(IllegalArgumentException.class,
+                () -> Wait.retry(unexpectedAction, Duration.ofMillis(1), Duration.ofSeconds(1), true));
+        assertThrows(IllegalArgumentException.class,
+                () -> Wait.retry(unexpectedAction, Duration.ofMillis(1), Duration.ofSeconds(1), IllegalStateException.class));
     }
 }

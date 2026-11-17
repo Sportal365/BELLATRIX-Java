@@ -57,6 +57,14 @@ public class WebScreenshotPlugin extends ScreenshotPlugin {
     }
 
     @Override
+    public byte[] takeScreenshot() {
+        return PlaywrightService.wrappedBrowser().getCurrentPage()
+                .screenshot(new Page.ScreenshotOptions()
+                        .setType(ScreenshotType.PNG)
+                        .setFullPage(false));
+    }
+
+    @Override
     public String takeScreenshot(String name) {
         return takeScreenshot(getOutputFolder(), getUniqueFileName(name));
     }

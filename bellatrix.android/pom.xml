@@ -27,7 +27,7 @@
         <dependency>
             <groupId>io.appium</groupId>
             <artifactId>java-client</artifactId>
-            <version>8.3.0</version>
+            <version>9.4.0</version>
         </dependency>
         <dependency>
             <groupId>solutions.bellatrix</groupId>
@@ -69,6 +69,12 @@
             <groupId>org.apache.groovy</groupId>
             <artifactId>groovy</artifactId>
             <version>4.0.1</version>
+            <scope>compile</scope>
+        </dependency>
+        <dependency>
+            <groupId>solutions.bellatrix</groupId>
+            <artifactId>bellatrix.plugins.opencv</artifactId>
+            <version>1.0</version>
             <scope>compile</scope>
         </dependency>
     </dependencies>

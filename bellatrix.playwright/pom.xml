@@ -53,7 +53,7 @@
         </dependency>
         <dependency>
             <groupId>solutions.bellatrix</groupId>
-            <artifactId>bellatrix.layout</artifactId>
+            <artifactId>bellatrix.plugins.opencv</artifactId>
             <version>1.0</version>
             <scope>compile</scope>
         </dependency>
@@ -67,6 +67,12 @@
             <groupId>io.rest-assured</groupId>
             <artifactId>rest-assured</artifactId>
             <version>5.4.0</version>
+            <scope>compile</scope>
+        </dependency>
+        <dependency>
+            <groupId>solutions.bellatrix</groupId>
+            <artifactId>bellatrix.layout</artifactId>
+            <version>1.0</version>
             <scope>compile</scope>
         </dependency>
     </dependencies>

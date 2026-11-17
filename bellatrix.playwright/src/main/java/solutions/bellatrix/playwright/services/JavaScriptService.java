@@ -19,6 +19,15 @@ import solutions.bellatrix.playwright.components.Frame;
 import solutions.bellatrix.playwright.components.WebComponent;
 
 public class JavaScriptService extends WebService {
+    /**
+     * Evaluates the script on the current page with the arguments passed as one array, as upstream Bellatrix does.
+     * Failures are thrown, not swallowed.
+     */
+    @SuppressWarnings("unchecked")
+    public <T> T genericExecute(String script, Object... args) {
+        return (T) wrappedBrowser().getCurrentPage().evaluate(script, new Object[] { args });
+    }
+
     public Object execute(String expression) {
         return wrappedBrowser().getCurrentPage().evaluate(expression);
     }

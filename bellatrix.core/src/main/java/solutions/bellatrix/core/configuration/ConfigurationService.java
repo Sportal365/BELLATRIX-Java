@@ -14,6 +14,7 @@
 package solutions.bellatrix.core.configuration;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
 import lombok.experimental.UtilityClass;
 import org.apache.commons.io.IOUtils;
@@ -53,7 +54,11 @@ public final class ConfigurationService {
         String jsonFileContent = getFileAsString(fileName);
         String sectionName = getSectionName(configSection);
 
-        var section = JsonParser.parseString(jsonFileContent).getAsJsonObject().getAsJsonObject(sectionName);
+        JsonElement sectionFound = JsonParser.parseString(jsonFileContent).getAsJsonObject().get(sectionName);
+        if (sectionFound == null) {
+            return mappedObject;
+        }
+        var section = sectionFound.getAsJsonObject();
         applyOverrides(section, sectionName, System.getProperties());
         var jsonObject = section.toString();
 

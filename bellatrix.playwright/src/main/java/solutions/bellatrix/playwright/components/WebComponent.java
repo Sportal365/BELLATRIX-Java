@@ -43,6 +43,7 @@ import solutions.bellatrix.playwright.components.options.actions.ClickOptions;
 import solutions.bellatrix.playwright.components.options.actions.HoverOptions;
 import solutions.bellatrix.playwright.components.options.actions.UncheckOptions;
 import solutions.bellatrix.playwright.components.options.states.BoundingBoxOptions;
+import solutions.bellatrix.playwright.components.shadowdom.ShadowDomService;
 import solutions.bellatrix.playwright.components.shadowdom.ShadowRoot;
 import solutions.bellatrix.playwright.configuration.WebSettings;
 import solutions.bellatrix.playwright.findstrategies.*;
@@ -345,7 +346,16 @@ public class WebComponent extends LayoutComponentValidationsBuilder implements C
     }
 
     protected String defaultGetInnerHtmlAttribute() {
-        return Optional.ofNullable(findLocator().innerHTML()).orElse("");
+        if (!(this.inShadowContext())) {
+            return Optional.ofNullable(findLocator().innerHTML()).orElse("");
+        } else {
+            if (this instanceof ShadowRoot) {
+                return ShadowDomService.getShadowHtml(this, true);
+            } else {
+                return ShadowDomService.getShadowHtml(this, false);
+            }
+        }
+
     }
 
     protected String defaultGetForAttribute() {
@@ -1448,5 +1458,16 @@ public class WebComponent extends LayoutComponentValidationsBuilder implements C
     @Deprecated
     public <TComponent extends WebComponent> List<TComponent> shadowRootCreateAllByInnerTextContaining(Class<TComponent> componentClass, String innerText) {
         return getShadowRoot().create().allBy(componentClass, new InnerTextContainingFindStrategy(innerText));
+    }
+
+    private boolean inShadowContext() {
+        var component = this;
+
+        while (component != null) {
+            if (component instanceof ShadowRoot) return true;
+            component = component.getParentComponent();
+        }
+
+        return false;
     }
 }

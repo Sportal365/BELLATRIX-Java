@@ -25,7 +25,6 @@ import org.openqa.selenium.support.ui.WebDriverWait;
 import org.testng.Assert;
 import solutions.bellatrix.core.configuration.ConfigurationService;
 import solutions.bellatrix.core.utilities.Log;
-import solutions.bellatrix.core.utilities.ClipboardManager;
 import solutions.bellatrix.core.utilities.Wait;
 import solutions.bellatrix.web.components.Frame;
 import solutions.bellatrix.web.configuration.WebSettings;
@@ -38,19 +37,16 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.logging.Level;
 
 public class BrowserService extends WebService {
-    private final JavascriptExecutor javascriptExecutor;
-
     public BrowserService() {
         super();
-        javascriptExecutor = (JavascriptExecutor)getWrappedDriver();
+    }
+
+    public JavascriptExecutor getJavascriptExecutor() {
+        return (JavascriptExecutor)getWrappedDriver();
     }
 
     public String getPageSource() {
@@ -67,6 +63,14 @@ public class BrowserService extends WebService {
 
     public void back() {
         getWrappedDriver().navigate().back();
+    }
+
+    public void setSize(int width, int height) {
+        setSize(new Dimension(width, height));
+    }
+
+    public void setSize(Dimension dimension) {
+        getWrappedDriver().manage().window().setSize(dimension);
     }
 
     public void maximize() {
@@ -107,25 +111,26 @@ public class BrowserService extends WebService {
     }
 
     public void switchToTab(Runnable condition) {
-        switchToTab(condition, Duration.ofSeconds(5), Duration.ofMillis(100));
-    }
-
-    void switchToTab(Runnable condition, Duration timeout, Duration pollingInterval) {
         Wait.retry(() -> {
                     var handles = getWrappedDriver().getWindowHandles();
+                    boolean shouldThrowException = true;
                     for (var currentHandle : handles) {
+                        getWrappedDriver().switchTo().window(currentHandle);
                         try {
-                            getWrappedDriver().switchTo().window(currentHandle);
                             condition.run();
-                            return;
-                        } catch (TimeoutException | NotFoundException | StaleElementReferenceException ignored) {
+                            shouldThrowException = false;
+                            break;
+                        } catch (Exception ex) {
+                            // ignore
                         }
                     }
-                    throw new TimeoutException("No browser tab matched the requested condition.");
+
+                    if (shouldThrowException) {
+                        throw new TimeoutException();
+                    }
                 },
-                timeout,
-                pollingInterval,
-                true,
+                5,
+                0,
                 TimeoutException.class, NotFoundException.class, StaleElementReferenceException.class);
     }
 
@@ -138,41 +143,42 @@ public class BrowserService extends WebService {
     }
 
     public void clearSessionStorage() {
-        ((JavascriptExecutor)getWrappedDriver()).executeScript("sessionStorage.clear()");
+        getJavascriptExecutor().executeScript("sessionStorage.clear()");
     }
 
     public void removeItemFromLocalStorage(String item) {
-        ((JavascriptExecutor)getWrappedDriver()).executeScript(String.format("window.localStorage.removeItem('%s');", item));
+        getJavascriptExecutor().executeScript(String.format("window.localStorage.removeItem('%s');", item));
     }
 
     public void scrollToBottom() {
-        ((JavascriptExecutor)getWrappedDriver()).executeScript("window.scrollTo(0, document.body.scrollHeight)");
+        getJavascriptExecutor().executeScript("window.scrollTo(0, document.body.scrollHeight)");
     }
 
+    //ToDo hhristov 11/03/2026 - This method should be deleted once the CMS refactoring is finished
     public void scrollToShellWindowBottom() {
-        ((JavascriptExecutor)getWrappedDriver()).executeScript("var c = document.querySelector('.shell__content > div');" +
+        getJavascriptExecutor().executeScript("var c = document.querySelector('.shell__content > div');" +
                 " if (c) c.scrollTop = c.scrollHeight; else window.scrollTo(0, document.body.scrollHeight);");
     }
 
     public void scrollToTop() {
-        ((JavascriptExecutor)getWrappedDriver()).executeScript("window.scrollTo(0, 0)");
+        getJavascriptExecutor().executeScript("window.scrollTo(0, 0)");
     }
 
     public boolean isItemPresentInLocalStorage(String item) {
-        return !(((JavascriptExecutor)getWrappedDriver()).executeScript(String.format("return window.localStorage.getItem('%s');", item)) == null);
+        return !(getJavascriptExecutor().executeScript(String.format("return window.localStorage.getItem('%s');", item)) == null);
     }
 
     public String getItemFromLocalStorage(String key) {
-        return (String)((JavascriptExecutor)getWrappedDriver()).executeScript(String.format("return window.localStorage.getItem('%s');", key));
+        return (String)getJavascriptExecutor().executeScript(String.format("return window.localStorage.getItem('%s');", key));
     }
 
 
     public void setItemInLocalStorage(String item, String value) {
-        ((JavascriptExecutor)getWrappedDriver()).executeScript(String.format("window.localStorage.setItem('%s','%s');", item, value));
+        getJavascriptExecutor().executeScript(String.format("window.localStorage.setItem('%s','%s');", item, value));
     }
 
     public void clearLocalStorage() {
-        ((JavascriptExecutor)getWrappedDriver()).executeScript("localStorage.clear()");
+        getJavascriptExecutor().executeScript("localStorage.clear()");
     }
 
     public List<LogEntry> getBrowserLogs() {
@@ -217,72 +223,19 @@ public class BrowserService extends WebService {
     }
 
     public List<String> getRequestEntries(String partialUrl) {
-        return (List<String>)((JavascriptExecutor)getWrappedDriver()).executeScript(String.format("return window.performance.getEntriesByType('resource').filter(x => x.name.indexOf('%s') >= 0).map(y => y.name);", partialUrl));
+        return (List<String>)getJavascriptExecutor().executeScript(String.format("return window.performance.getEntriesByType('resource').filter(x => x.name.indexOf('%s') >= 0).map(y => y.name);", partialUrl));
     }
 
     public void waitForAjax() {
-        waitForAjaxToComplete();
-    }
-
-    public boolean waitForAjaxToComplete() {
         long ajaxTimeout = ConfigurationService.get(WebSettings.class).getTimeoutSettings().getWaitForAjaxTimeout();
         long sleepInterval = ConfigurationService.get(WebSettings.class).getTimeoutSettings().getSleepInterval();
-        return waitForAjaxToComplete(Duration.ofSeconds(ajaxTimeout), Duration.ofSeconds(sleepInterval));
-    }
-
-    boolean waitForAjaxToComplete(Duration timeout, Duration pollingInterval) {
-        var javascriptExecutor = (JavascriptExecutor)getWrappedDriver();
-        AtomicInteger ajaxConnections = new AtomicInteger();
-        AtomicBoolean observed = new AtomicBoolean();
         try {
-            Wait.retry(() -> {
-                        var numberOfAjaxConnections = javascriptExecutor.executeScript("return !isNaN(window.$openHTTPs) ? window.$openHTTPs : null");
-                        if (Objects.nonNull(numberOfAjaxConnections)) {
-                            observed.set(true);
-                            ajaxConnections.set(Integer.parseInt(numberOfAjaxConnections.toString()));
-                            if (ajaxConnections.get() > 0) {
-                                String message = "Waiting for %s Ajax Connections...".formatted(ajaxConnections);
-                                injectInfoNotificationToast(message);
-                                Log.info(message);
-                                throw new TimeoutException(message);
-                            }
-                        } else {
-                            monkeyPatchXMLHttpRequest();
-                        }
-                    },
-                    timeout,
-                    pollingInterval,
-                    true,
-                    TimeoutException.class);
-            return observed.get();
+            waitForXhrIdle(Duration.ofSeconds(ajaxTimeout), Duration.ofSeconds(sleepInterval));
         }
         catch (Exception e) {
-            var message = "Timed out waiting for %s Ajax connections.".formatted(ajaxConnections.get());
+            var message = "Timed out waiting for Async requests. Continuing...";
             Log.error(message);
             injectErrorNotificationToast(message);
-            return false;
-        }
-    }
-
-    private void monkeyPatchXMLHttpRequest() {
-        var numberOfAjaxConnections = javascriptExecutor.executeScript(("return !isNaN(window.$openHTTPs) ? window.$openHTTPs : null"));
-
-        if (Objects.isNull(numberOfAjaxConnections)) {
-            var script = "(function() {" +
-                            "const oldOpen = XMLHttpRequest.prototype.open;" +
-                            "window.$openHTTPs = 0;" +
-                            "XMLHttpRequest.prototype.open = function() {" +
-                                "window.$openHTTPs++;" +
-                                "this.addEventListener('readystatechange', function() {" +
-                                    "if(this.readyState == 4) {" +
-                                        "window.$openHTTPs--;" +
-                                    "}" +
-                                "}, false);" +
-                                "return oldOpen.call(this, ...arguments);" +
-                            "}" +
-                        "})();";
-
-            javascriptExecutor.executeScript(script);
         }
     }
 
@@ -292,7 +245,7 @@ public class BrowserService extends WebService {
         var webDriverWait = new WebDriverWait(getWrappedDriver(), Duration.ofSeconds(ajaxTimeout + additionalTimeoutInSeconds), Duration.ofSeconds(sleepInterval));
         webDriverWait.until(d -> {
             String script = String.format("return performance.getEntriesByType('resource').filter(item => item.initiatorType == 'xmlhttprequest' && item.name.toLowerCase().includes('%s'))[0] !== undefined;", requestPartialUrl);
-            boolean result = (boolean)javascriptExecutor.executeScript(script);
+            boolean result = (boolean)getJavascriptExecutor().executeScript(script);
             return result;
         });
     }
@@ -358,6 +311,7 @@ public class BrowserService extends WebService {
 
     public void injectNotificationToast(String message, long timeoutMillis, ToastNotificationType type) {
         String escapedMessage = StringEscapeUtils.escapeEcmaScript(message);
+        Log.info("[" + type.name() + "] " + escapedMessage);
         String executionScript = """
                 window.$bellatrixToastContainer = !window.$bellatrixToastContainer ? Object.assign(document.createElement('div'), {id: 'bellatrixToastContainer', style: 'position: fixed; top: 0; height: 100vh; padding-bottom: 20px; display: flex; pointer-events: none; z-index: 2147483646; justify-content: flex-end; flex-direction: column; overflow: hidden;'}) : window.$bellatrixToastContainer;
                 let $message = '""" + escapedMessage + """
@@ -394,8 +348,8 @@ public class BrowserService extends WebService {
         long waitUntilReadyTimeout = ConfigurationService.get(WebSettings.class).getTimeoutSettings().getWaitUntilReadyTimeout();
         long sleepInterval = ConfigurationService.get(WebSettings.class).getTimeoutSettings().getSleepInterval();
         var webDriverWait = new WebDriverWait(getWrappedDriver(), Duration.ofSeconds(waitUntilReadyTimeout), Duration.ofSeconds(sleepInterval));
-        webDriverWait.until(d -> javascriptExecutor.executeScript("return document.querySelector('[data-reactroot]') !== null"));
-        webDriverWait.until(d -> javascriptExecutor.executeScript("return window.performance.timing.loadEventEnd > 0"));
+        webDriverWait.until(d -> getJavascriptExecutor().executeScript("return document.querySelector('[data-reactroot]') !== null"));
+        webDriverWait.until(d -> getJavascriptExecutor().executeScript("return window.performance.timing.loadEventEnd > 0"));
     }
 
     // TODO Refactor the other methods to reuse this one
@@ -425,7 +379,7 @@ public class BrowserService extends WebService {
         long waitForJavaScriptAnimationsTimeout = ConfigurationService.get(WebSettings.class).getTimeoutSettings().getWaitForJavaScriptAnimationsTimeout();
         long sleepInterval = ConfigurationService.get(WebSettings.class).getTimeoutSettings().getSleepInterval();
         var webDriverWait = new WebDriverWait(getWrappedDriver(), Duration.ofSeconds(waitForJavaScriptAnimationsTimeout), Duration.ofSeconds(sleepInterval));
-        webDriverWait.until(d -> (boolean)javascriptExecutor.executeScript("return jQuery && jQuery(':animated').length === 0"));
+        webDriverWait.until(d -> (boolean)getJavascriptExecutor().executeScript("return jQuery && jQuery(':animated').length === 0"));
     }
 
     public void waitForPartialUrl(String partialUrl) {
@@ -443,11 +397,10 @@ public class BrowserService extends WebService {
     }
 
     public void waitForRequest(String partialUrl) {
-        var javascriptExecutor = (JavascriptExecutor)getWrappedDriver();
         String script = String.format("return performance.getEntriesByType('resource').filter(item => item.name.toLowerCase().includes('%s'))[0] !== undefined;", partialUrl);
 
         try {
-            waitUntil(e -> (boolean)javascriptExecutor.executeScript(script));
+            waitUntil(e -> (boolean)getJavascriptExecutor().executeScript(script));
         } catch (TimeoutException exception) {
             throw new TimeoutException(String.format("The expected request with URL '%s' is not loaded!", partialUrl));
         }
@@ -458,9 +411,8 @@ public class BrowserService extends WebService {
             if(ProxyServer.get() != null) {
                 ProxyServer.waitForResponse(getWrappedDriver(), partialUrl, HttpMethod.GET, 0);
             } else {
-                var javascriptExecutor = (JavascriptExecutor)getWrappedDriver();
                 String script = "return performance.getEntriesByType('resource').filter(item => item.name.toLowerCase().includes('" + partialUrl.toLowerCase() + "'))[0] !== undefined;";
-                waitUntil(e -> (boolean)javascriptExecutor.executeScript(script));
+                waitUntil(e -> (boolean)getJavascriptExecutor().executeScript(script));
             }
         } catch (Exception exception) {
             Log.error("The expected request with URL '%s' is not loaded!", partialUrl);
@@ -476,15 +428,15 @@ public class BrowserService extends WebService {
         long sleepInterval = ConfigurationService.get(WebSettings.class).getTimeoutSettings().getSleepInterval();
         var webDriverWait = new WebDriverWait(getWrappedDriver(), Duration.ofSeconds(angularTimeout), Duration.ofSeconds(sleepInterval));
 
-        String isAngular5 = (String)javascriptExecutor.executeScript("return getAllAngularRootElements()[0].attributes['ng-version']");
+        String isAngular5 = (String)getJavascriptExecutor().executeScript("return getAllAngularRootElements()[0].attributes['ng-version']");
         if (StringUtils.isBlank(isAngular5)) {
-            webDriverWait.until(d -> (boolean)javascriptExecutor.executeScript("return window.getAllAngularTestabilities().findIndex(x=>!x.isStable()) === -1"));
+            webDriverWait.until(d -> (boolean)getJavascriptExecutor().executeScript("return window.getAllAngularTestabilities().findIndex(x=>!x.isStable()) === -1"));
         } else {
-            boolean isAngularDefined = (boolean)javascriptExecutor.executeScript("return window.angular === undefined");
+            boolean isAngularDefined = (boolean)getJavascriptExecutor().executeScript("return window.angular === undefined");
             if (!((boolean)isAngularDefined)) {
-                boolean isAngularInjectorUnDefined = (boolean)javascriptExecutor.executeScript("return angular.element(document).injector() === undefined");
+                boolean isAngularInjectorUnDefined = (boolean)getJavascriptExecutor().executeScript("return angular.element(document).injector() === undefined");
                 if (!isAngularInjectorUnDefined) {
-                    webDriverWait.until(d -> (boolean)javascriptExecutor.executeScript("return angular.element(document).injector().get('$http').pendingRequests.length === 0"));
+                    webDriverWait.until(d -> (boolean)getJavascriptExecutor().executeScript("return angular.element(document).injector().get('$http').pendingRequests.length === 0"));
                 }
             }
         }
@@ -563,35 +515,49 @@ public class BrowserService extends WebService {
     }
 
     public String getLastClipboardEntry() {
-        if ("regular".equals(ConfigurationService.get(WebSettings.class).getExecutionType())) {
-            return ClipboardManager.getLastEntity();
+        JavaScriptService jsService = new JavaScriptService();
+        Object lastCopyObject = jsService.execute("return await window.navigator.clipboard.readText();");
+        if (lastCopyObject != null) {
+            return lastCopyObject.toString();
+        } else {
+            return "";
         }
-        return executeClipboardOperation(false, "");
     }
 
-    public void copyTextToClipboard(String text) {
-        Objects.requireNonNull(text, "Clipboard text must not be null");
-        if ("regular".equals(ConfigurationService.get(WebSettings.class).getExecutionType())) {
-            ClipboardManager.copyTextToClipboard(text);
-            return;
-        }
-        executeClipboardOperation(true, text);
-    }
+    public void waitForXhrIdle(Duration idleGap,
+                                      Duration timeout) {
 
-    private String executeClipboardOperation(boolean write, String text) {
-        var result = (Map<?, ?>) javascriptExecutor.executeAsyncScript("""
-                const [write, text, done] = arguments;
-                if (!navigator.clipboard) {
-                    done({error: 'Clipboard API is unavailable; a secure browser context is required'});
+        JavascriptExecutor js = this.getJavascriptExecutor();
+        long start = System.nanoTime();
+        long deadline = start + timeout.toNanos();
+        long gapMs   = idleGap.toMillis();
+
+        while (System.nanoTime() < deadline) {
+            try {
+                Long active = (Long) js.executeScript(XHR_ACTIVE_JS, gapMs);
+                if (active == 0) {
+                    logElapsed(start);
                     return;
                 }
-                const operation = write ? navigator.clipboard.writeText(text) : navigator.clipboard.readText();
-                operation.then(value => done({value: value ?? ''}),
-                    error => done({error: error.name + ': ' + error.message}));
-                """, write, text);
-        if (result.containsKey("error")) {
-            throw new WebDriverException("Browser clipboard operation failed: " + result.get("error"));
+                Thread.sleep(40);
+            } catch (Exception e) {
+                // ignore and retry until timeout
+            }
         }
-        return (String) result.get("value");
+        logElapsed(start);
+//        Log.error("Timed-out waiting for XHR idle");
     }
+
+    private void logElapsed(long startNano) {
+        long ms = (System.nanoTime() - startNano) / 1_000_000;
+        Log.info("[Browser Wait] Waited %d ms for pending XHRs %n", ms);
+    }
+
+    private final String XHR_ACTIVE_JS =
+            "const now = performance.now();" +
+                    "return performance.getEntriesByType('resource')" +
+                    "        .filter(e => e.initiatorType === 'xmlhttprequest' || e.initiatorType === 'fetch')" +
+                    "        .filter(e => !e.responseEnd || e.responseEnd > now - arguments[0])" + // still running
+                    "        .length;";
+
 }

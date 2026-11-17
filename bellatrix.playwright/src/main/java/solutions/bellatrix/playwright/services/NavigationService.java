@@ -15,8 +15,11 @@ package solutions.bellatrix.playwright.services;
 
 import com.google.common.base.Strings;
 import com.microsoft.playwright.Page;
+import lombok.SneakyThrows;
 import solutions.bellatrix.core.utilities.SingletonFactory;
+import solutions.bellatrix.playwright.pages.WebPage;
 
+import java.lang.reflect.Method;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLDecoder;
@@ -29,6 +32,13 @@ import static java.util.stream.Collectors.toList;
 
 @SuppressWarnings("ALL")
 public class NavigationService extends WebService {
+    @SneakyThrows
+    public void to(WebPage page) {
+        Method method = page.getClass().getDeclaredMethod("getUrl");
+        method.setAccessible(true);
+        wrappedBrowser().getCurrentPage().navigate((String)method.invoke(page));
+    }
+
     public void to(String url) {
         Page page = wrappedBrowser().getCurrentPage();
         // The browser does nothing for a URL with a fragment that the page already shows, so the page is loaded again.

@@ -25,14 +25,27 @@ import java.util.Objects;
 // Can be used inside App design pattern.
 @SuppressWarnings("unchecked")
 @UtilityClass
-public class SingletonFactory {
+public class SingletonFactory extends ObjectFactory {
     private static final ThreadLocal<Map<Class<?>, Object>> mapHolder = ThreadLocal.withInitial(HashMap::new);
 
     public static <T> T getInstance(Class<T> classOf, Object... initargs) {
+        if (!mapHolder.get().containsKey(classOf)) {
+            T obj = tryGetInstance(classOf, initargs);
+            register(obj);
+        }
+
+        return (T)mapHolder.get().get(classOf);
+    }
+
+    private static <T> T tryGetInstance(Class<T> classOf, Object... initargs) {
         try {
-            return getOrConstruct(classOf, initargs);
-        } catch (Exception e) {
-            Log.error("Failed to create instance of the object. Exception was: " + e);
+            return newInstance(classOf, initargs);
+        } catch (InvocationTargetException e) {
+            Log.error(e.getTargetException().getMessage(), e);
+            return null;
+        } catch (InstantiationException | IllegalAccessException |
+                 ConstructorNotFoundException e) {
+            Log.error("Failed to create instance of the class %s.\nException was:\n%s".formatted(classOf.getName(), e.getMessage()));
             return null;
         }
     }
@@ -59,11 +72,21 @@ public class SingletonFactory {
     }
 
     public static <T> void register(T instance) {
-        mapHolder.get().put(instance.getClass(), instance);
+        if (instance != null)
+            mapHolder.get().put(instance.getClass(), instance);
     }
 
     public static <T> void register(Class<?> classKey, T instance) {
-        mapHolder.get().put(classKey, instance);
+        if (instance != null)
+            mapHolder.get().put(classKey, instance);
+    }
+
+    public static boolean containsKey(Class<?> classOf) {
+        return mapHolder.get().containsKey(classOf);
+    }
+
+    public static boolean containsValue(Object object) {
+        return mapHolder.get().containsValue(object);
     }
 
     public static void clear() {

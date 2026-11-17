@@ -62,6 +62,9 @@ public class Wait {
         if (timeout.isNegative() || timeout.isZero() || sleepInterval.isNegative()) {
             throw new IllegalArgumentException("Timeout must be positive and sleep interval must not be negative");
         }
+        if (sleepInterval.toMillis() > timeout.toMillis()) {
+            throw new IllegalArgumentException("Sleep interval cannot be bigger than Total timeout.");
+        }
         long timeoutNanos = timeout.toNanos();
         long start = System.nanoTime();
         Exception lastException;
@@ -88,7 +91,7 @@ public class Wait {
         return finishRetry(lastException, shouldThrowException);
     }
 
-    public static void retry(Runnable action, Duration sleepInterval, Duration timeout, Class<? extends Throwable> ... exceptionsToIgnore) {
+    public static void retry(Runnable action, Duration timeout, Duration sleepInterval, Class<? extends Throwable> ... exceptionsToIgnore) {
         Wait.retry(action, timeout, sleepInterval, true, exceptionsToIgnore);
     }
 
