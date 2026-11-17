@@ -3,6 +3,7 @@ package solutions.bellatrix.playwright.infrastructure;
 import com.microsoft.playwright.Route;
 import com.microsoft.playwright.TimeoutError;
 import com.microsoft.playwright.options.AriaRole;
+import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -25,11 +26,17 @@ import solutions.bellatrix.playwright.findstrategies.LabelFindStrategy;
 import solutions.bellatrix.playwright.infrastructure.junit.WebTest;
 import solutions.bellatrix.playwright.utilities.Settings;
 
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.logging.Level;
 
 import static com.microsoft.playwright.assertions.PlaywrightAssertions.assertThat;
 import static org.junit.jupiter.api.Assertions.*;
@@ -317,6 +324,80 @@ class BrowserComponentTests extends WebTest {
                     + "(resource locations: [https://console.fixture/unlisted])"), failure::getMessage);
         });
     }
+
+    @Test
+    void consoleReadIncludesErrorLogged_when_noBrowserCallRanSinceTheErrorWasLogged() throws Exception {
+        var logged = new CountDownLatch(1);
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            if (exchange.getRequestURI().getPath().equals("/logged")) {
+                logged.countDown();
+            }
+            try (exchange) {
+                byte[] body = "<!doctype html><title>Console</title>".getBytes(StandardCharsets.UTF_8);
+                exchange.sendResponseHeaders(200, body.length);
+                exchange.getResponseBody().write(body);
+            }
+        });
+        server.start();
+        try {
+            app().browser().page().navigate("http://127.0.0.1:" + server.getAddress().getPort() + "/");
+            app().browser().page().evaluate("() => setTimeout(() => { console.error('late error');"
+                    + " setTimeout(() => fetch('/logged'), 100); }, 100)");
+            assertTrue(logged.await(10, TimeUnit.SECONDS), "The fixture page did not log its error");
+
+            assertEquals(List.of(), PlaywrightService.wrappedBrowser().getConsoleErrors());
+            assertEquals(List.of("late error"), app().browser().consoleErrors());
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void expectedConsoleErrorIsLeftOutOfTheChecks_when_itArrivesAfterTheDeclaration() {
+        app().browser().expectConsoleErrors(entry -> entry.location() != null
+                && entry.location().startsWith("https://console.fixture/expected"));
+        app().browser().context().route("https://console.fixture/**",
+                route -> route.fulfill(new Route.FulfillOptions().setStatus(404)));
+        app().browser().page().setContent("<img src='https://console.fixture/expected'><img src='https://console.fixture/unexpected'>");
+        app().browser().waitUntil(() -> app().browser().consoleEntries().size() == 2);
+
+        assertEquals(1, app().browser().consoleErrors().size());
+        assertEquals(1, app().browser().getSevereLogEntries().size());
+        AssertionError failure = assertThrows(AssertionError.class, () -> app().browser().assertNoConsoleErrorsLogged());
+        assertTrue(failure.getMessage().startsWith("Severe errors found in browser console "
+                + "(resource locations: [https://console.fixture/unexpected])"), failure::getMessage);
+    }
+
+    @Test
+    void consoleMessageAssertionWaitsForTheMessage_when_pageLogsItLate() {
+        app().browser().page().setContent("<script>setTimeout(() => console.warn('late warning'), 300)</script>");
+
+        app().browser().assertConsoleErrorLogged("late warning", Level.WARNING);
+
+        AssertionFailedError failure = assertThrows(AssertionFailedError.class,
+                () -> app().browser().assertConsoleErrorLogged("absent warning", Level.WARNING));
+        assertTrue(failure.getMessage().startsWith("Expected console warning containing absent warning within"),
+                failure::getMessage);
+    }
+
+    @Test
+    void popupIsClosed_when_itIsStillLoading() {
+        var page = app().browser().page();
+        var heldScript = new AtomicReference<Route>();
+        app().browser().context().route("https://popup.fixture/article", route -> route.fulfill(new Route.FulfillOptions()
+                .setContentType("text/html").setBody("<script src='/held.js'></script><p>Article</p>")));
+        app().browser().context().route("https://popup.fixture/held.js", heldScript::set);
+        page.setContent("<button onclick=\"window.open('https://popup.fixture/article')\">Open</button>");
+        var popup = app().browser().runAndWaitForPopup(() -> page.getByText("Open").click());
+        app().browser().waitForCondition(() -> heldScript.get() != null);
+
+        app().browser().closePage(popup);
+
+        assertTrue(popup.isClosed());
+        assertEquals(List.of(), app().browser().consoleErrors());
+    }
+
 
     @Test
     void textValidationReportsTheTextSeenAtFailure_when_textChangesDuringTheWait() {

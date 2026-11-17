@@ -62,20 +62,36 @@ public class BrowserService extends WebService {
     }
 
     public List<String> consoleErrors() {
-        return wrappedBrowser().getConsoleErrors();
+        var browser = wrappedBrowser();
+        browser.deliverPendingEvents();
+        return browser.getConsoleErrors();
     }
 
     public List<WrappedBrowser.ConsoleEntry> consoleEntries() {
-        return wrappedBrowser().getConsoleEntries();
+        var browser = wrappedBrowser();
+        browser.deliverPendingEvents();
+        return browser.getConsoleEntries();
     }
 
     public void discardConsoleErrors(Predicate<WrappedBrowser.ConsoleEntry> expectedError) {
-        wrappedBrowser().discardConsoleErrors(expectedError);
+        var browser = wrappedBrowser();
+        browser.deliverPendingEvents();
+        browser.discardConsoleErrors(expectedError);
+    }
+
+    /**
+     * Declares console errors the test expects, before the action that causes them. The console checks leave them out
+     * whenever they arrive.
+     */
+    public void expectConsoleErrors(Predicate<WrappedBrowser.ConsoleEntry> expectedError) {
+        wrappedBrowser().expectConsoleErrors(expectedError);
     }
 
     public List<String> getSevereLogEntries() {
+        var browser = wrappedBrowser();
+        browser.deliverPendingEvents();
         List<String> whitelist = consoleErrorsWhitelist();
-        List<String> messages = consoleErrors();
+        List<String> messages = browser.getConsoleErrors();
         List<WrappedBrowser.ConsoleEntry> errors = consoleErrorEntries();
         List<String> severe = new ArrayList<>();
         for (int index = 0; index < messages.size(); index++) {
@@ -103,7 +119,9 @@ public class BrowserService extends WebService {
     }
 
     private List<WrappedBrowser.ConsoleEntry> consoleErrorEntries() {
-        return consoleEntries().stream().filter(entry -> "error".equals(entry.type())).toList();
+        var browser = wrappedBrowser();
+        return browser.getConsoleEntries().stream()
+                .filter(entry -> "error".equals(entry.type()) && !browser.isExpectedConsoleError(entry)).toList();
     }
 
     private static List<String> consoleErrorsWhitelist() {
@@ -141,10 +159,26 @@ public class BrowserService extends WebService {
             case "WARNING" -> "warning";
             default -> throw new IllegalArgumentException("Unsupported console severity: " + level);
         };
-        var entries = consoleEntries();
-        org.junit.jupiter.api.Assertions.assertTrue(entries.stream().anyMatch(
-                        entry -> type.equals(entry.type()) && entry.message().contains(message)),
-                () -> "Expected console " + type + " containing " + message + " but found " + entries);
+        var browser = wrappedBrowser();
+        var options = new BrowserContext.WaitForConditionOptions();
+        var timeout = Settings.timeout().inMilliseconds().getValidationsTimeout();
+        if (timeout > 0) {
+            options.setTimeout(timeout);
+        }
+        try {
+            waitForCondition(() -> browser.getConsoleEntries().stream()
+                    .anyMatch(entry -> type.equals(entry.type()) && entry.message().contains(message)), options);
+        } catch (TimeoutError timedOut) {
+            org.junit.jupiter.api.Assertions.fail("Expected console " + type + " containing " + message
+                    + " within " + timeout + " ms but found " + browser.getConsoleEntries());
+        }
+    }
+
+    /**
+     * Closes a page of the current context, also one that is still loading.
+     */
+    public void closePage(Page page) {
+        wrappedBrowser().closePage(page);
     }
 
     public void copyTextToClipboard(String text) {

@@ -48,6 +48,7 @@ public class WrappedBrowser implements AutoCloseable {
     private static final int MAX_CONSOLE_MESSAGES_PER_TYPE = 1_000;
     private static final int MAX_COMPLETED_RESOURCES = 2_048;
     private static final int MAX_AJAX_PATH_LENGTH = 200;
+    private static final int MAX_SKIPPED_CLOSED_PAGE_EVENTS = 1_000;
 
     private final Playwright playwright;
     @Getter private final Browser browser;
@@ -56,6 +57,7 @@ public class WrappedBrowser implements AutoCloseable {
     private Page primaryPage;
     private final List<ConsoleEntry> consoleEntries = new ArrayList<>();
     private final Map<String, Integer> consoleCounts = new HashMap<>();
+    private final List<Predicate<ConsoleEntry>> expectedConsoleErrors = new ArrayList<>();
     private final Consumer<ConsoleMessage> consoleListener = message -> {
         if ("error".equals(message.type()) || "warning".equals(message.type())) {
             recordConsoleEntry(new ConsoleEntry(message.type(), message.text(), message.location(), message.timestamp()));
@@ -158,14 +160,17 @@ public class WrappedBrowser implements AutoCloseable {
         }
         for (Page page : currentContext.pages()) {
             if (page != primaryPage) {
-                page.close();
+                closePage(page);
             }
         }
+        // console messages the previous test's pages already sent are cleared below, not charged to the next test
+        deliverPendingEvents();
         if (capturing) {
             NetworkService.install(currentContext);
         }
         consoleEntries.clear();
         consoleCounts.clear();
+        expectedConsoleErrors.clear();
         completedResources.clear();
         pendingAjax.clear();
         ajaxSequence = 0L;
@@ -178,10 +183,48 @@ public class WrappedBrowser implements AutoCloseable {
         currentPage = page;
     }
 
+    /**
+     * Closes a page of the current context, also one that is still loading.
+     */
+    public void closePage(Page page) {
+        skipEventsOfClosedPages(page::close);
+        deliverPendingEvents();
+    }
+
+    /**
+     * Dispatches the events Playwright has already sent, console messages among them: the Java client dispatches
+     * events only while a Playwright call runs. The console getters read only what was dispatched.
+     */
+    public void deliverPendingEvents() {
+        var page = currentPage != null && !currentPage.isClosed() ? currentPage : primaryPage;
+        if (!browser.isConnected() || page == null || page.isClosed()) {
+            return;
+        }
+        // a round trip to the Playwright driver that does nothing in the browser
+        skipEventsOfClosedPages(() -> page.waitForTimeout(0));
+    }
+
+    // A request of a closed page can finish after the Java client dropped that page; dispatching its event then fails.
+    private static void skipEventsOfClosedPages(Runnable call) {
+        for (int skipped = 0; ; skipped++) {
+            try {
+                call.run();
+                return;
+            } catch (PlaywrightException exception) {
+                String message = exception.getMessage();
+                if (skipped == MAX_SKIPPED_CLOSED_PAGE_EVENTS || message == null
+                        || !message.startsWith("Object doesn't exist: page@")) {
+                    throw exception;
+                }
+            }
+        }
+    }
+
     public List<String> getConsoleErrors() {
-        var errors = new ArrayList<>(consoleEntries.stream()
-                .filter(entry -> "error".equals(entry.type())).map(ConsoleEntry::message).toList());
-        var omittedErrors = consoleCounts.getOrDefault("error", 0) - errors.size();
+        var recordedErrors = consoleEntries.stream().filter(entry -> "error".equals(entry.type())).toList();
+        var errors = new ArrayList<>(recordedErrors.stream()
+                .filter(entry -> !isExpectedConsoleError(entry)).map(ConsoleEntry::message).toList());
+        var omittedErrors = consoleCounts.getOrDefault("error", 0) - recordedErrors.size();
         if (omittedErrors > 0) {
             errors.add("Additional console errors omitted: " + omittedErrors);
         }
@@ -197,6 +240,18 @@ public class WrappedBrowser implements AutoCloseable {
         consoleEntries.removeIf(entry -> "error".equals(entry.type()) && expectedError.test(entry));
         var removed = before - consoleEntries.size();
         consoleCounts.computeIfPresent("error", (type, count) -> count - removed);
+    }
+
+    /**
+     * Declares console errors the current test expects. They stay recorded but are no console error of the test,
+     * whether they arrive before or after the declaration.
+     */
+    public void expectConsoleErrors(Predicate<ConsoleEntry> expectedError) {
+        expectedConsoleErrors.add(expectedError);
+    }
+
+    public boolean isExpectedConsoleError(ConsoleEntry entry) {
+        return "error".equals(entry.type()) && expectedConsoleErrors.stream().anyMatch(expected -> expected.test(entry));
     }
 
     public boolean hasPendingAjax(Page page) {
@@ -328,6 +383,7 @@ public class WrappedBrowser implements AutoCloseable {
         failures.run(context::close);
         consoleEntries.clear();
         consoleCounts.clear();
+        expectedConsoleErrors.clear();
         completedResources.clear();
         pendingAjax.clear();
         ajaxSequence = 0L;

@@ -90,6 +90,21 @@ class ClassContextLifecycleTests {
     }
 
     @Test
+    void expectedConsoleErrorsEndWithTheirTest_when_nextTestOfTheClassStarts() throws Exception {
+        lifecycle.preBeforeClass(Fixture.class);
+        WrappedBrowser browser = start("first");
+        browser.expectConsoleErrors(entry -> entry.message().contains("expected"));
+        browser.getCurrentPage().evaluate("() => console.error('expected in the first test')");
+        assertEquals(List.of(), browser.getConsoleErrors());
+        pass("first");
+
+        start("second");
+        browser.getCurrentPage().evaluate("() => console.error('expected in the first test only')");
+
+        assertEquals(List.of("expected in the first test only"), browser.getConsoleErrors());
+    }
+
+    @Test
     void contextIsReplacedAndBrowserKept_when_previousTestOfTheClassFailed() throws Exception {
         lifecycle.preBeforeClass(Fixture.class);
         WrappedBrowser browser = start("first");
