@@ -232,6 +232,8 @@ class BrowserComponentTests extends WebTest {
                 options -> options.setName("Shadow").setExact(true)).getText());
         assertEquals(1, shadow.createAllByCss(Button.class, ".action").size());
         assertEquals("Nested", shadow.createByTag(Span.class, "span").getText());
+        assertEquals("Nested", shadow.createByTag(Span.class, "span").getHtml());
+        assertEquals("<span>Nested</span>", shadow.createById(Div.class, "nested").getShadowRoot().getHtml());
         host.evaluate("""
                 host => host.shadowRoot.querySelector('.action').outerHTML =
                     '<button class="action">Replacement</button>'
