@@ -15,15 +15,11 @@ package solutions.bellatrix.core.plugins.junit;
 
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
+import solutions.bellatrix.core.plugins.FailureCollector;
 import solutions.bellatrix.core.plugins.PluginExecutionEngine;
 import solutions.bellatrix.core.plugins.TestResult;
 import solutions.bellatrix.core.plugins.TimeRecord;
 import solutions.bellatrix.core.plugins.UsesPlugins;
-
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
 
 @ExtendWith(TestResultWatcher.class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -31,96 +27,99 @@ import java.util.List;
 public class BaseTest extends UsesPlugins {
     static final ThreadLocal<TestResult> CURRENT_TEST_RESULT = new ThreadLocal<>();
     static final ThreadLocal<TimeRecord> CURRENT_TEST_TIME_RECORD = ThreadLocal.withInitial(TimeRecord::new);
-    private static final ThreadLocal<Boolean> CONFIGURATION_EXECUTED = new ThreadLocal<>();
-    private static final List<String> ALREADY_EXECUTED_BEFORE_CLASSES = Collections.synchronizedList(new ArrayList<>());
+    private boolean classInitializationAttempted;
+    private Throwable classInitializationFailure;
+    private AutoCloseable pluginScope;
     private TestInfo testInfo;
-
-    public BaseTest() {
-//        try {
-//            Field theUnsafe = Unsafe.class.getDeclaredField("theUnsafe");
-//            theUnsafe.setAccessible(true);
-//            Unsafe u = (Unsafe)theUnsafe.get(null);
-//
-//            Class<?> cls = Class.forName("jdk.internal.module.IllegalAccessLogger");
-//            Field logger = cls.getDeclaredField("logger");
-//            u.putObjectVolatile(cls, u.staticFieldOffset(logger), null);
-//        } catch (Exception ignored) {}
-        CONFIGURATION_EXECUTED.set(false);
-    }
 
     @BeforeEach
     public void beforeMethodCore(TestInfo testInfo) throws Exception {
+        this.testInfo = testInfo;
         try {
-            assert testInfo.getTestClass().isPresent();
-            this.testInfo = testInfo;
-            var currentTestClassName = testInfo.getTestClass().get().getName();
-            if (!ALREADY_EXECUTED_BEFORE_CLASSES.contains(currentTestClassName)) {
-                beforeClassCore();
-                ALREADY_EXECUTED_BEFORE_CLASSES.add(testInfo.getTestClass().get().getName());
-            }
-
-            var testClass = this.getClass();
-            assert testInfo.getTestMethod().isPresent();
-            var methodInfo = Arrays.stream(testClass.getMethods()).filter(m -> m.getName() == testInfo.getTestMethod().get().getName()).findFirst().get();
+            beforeClassCore();
+            var methodInfo = testInfo.getTestMethod().orElseThrow();
             PluginExecutionEngine.preBeforeTest(CURRENT_TEST_RESULT.get(), methodInfo);
             beforeEach();
             PluginExecutionEngine.postBeforeTest(CURRENT_TEST_RESULT.get(), methodInfo);
-        } catch (Exception e) {
-            e.printStackTrace();
-            onBeforeEachFailure();
-            PluginExecutionEngine.beforeTestFailed(e);
+        } catch (Throwable failure) {
+            CURRENT_TEST_RESULT.set(TestResult.FAILURE);
+            var failures = new FailureCollector(failure);
+            failures.run(this::onBeforeEachFailure);
+            failures.run(() -> PluginExecutionEngine.beforeTestFailed(FailureCollector.asException(failure)));
+            failures.throwIfAny();
         }
     }
 
     public void beforeClassCore() {
-        try {
-            if (!CONFIGURATION_EXECUTED.get()) {
-                configure();
-                CONFIGURATION_EXECUTED.set(true);
+        if (classInitializationAttempted) {
+            if (classInitializationFailure != null) {
+                new FailureCollector(classInitializationFailure).throwIfAny();
             }
+            return;
+        }
+        classInitializationAttempted = true;
+        pluginScope = PluginExecutionEngine.openScope();
+        try {
+            configure();
             var testClass = this.getClass();
             PluginExecutionEngine.preBeforeClass(testClass);
             beforeAll();
             PluginExecutionEngine.postBeforeClass(testClass);
-        } catch (Exception e) {
-            e.printStackTrace();
-            PluginExecutionEngine.beforeClassFailed(e);
+        } catch (Throwable failure) {
+            classInitializationFailure = failure;
+            var failures = new FailureCollector(failure);
+            failures.run(() -> PluginExecutionEngine.beforeClassFailed(FailureCollector.asException(failure)));
+            failures.throwIfAny();
         }
     }
 
     @AfterEach
     public void afterMethodCore(TestInfo testInfo) {
-        try {
-            var testClass = this.getClass();
-            assert testInfo.getTestMethod().isPresent();
-            var methodInfo = testClass.getMethod(testInfo.getTestMethod().get().getName(), testInfo.getTestMethod().get().getParameterTypes());
-            PluginExecutionEngine.preAfterTest(CURRENT_TEST_RESULT.get(), methodInfo); // DEPRECATED, LEFT FOR COMPATIBILITY
-            PluginExecutionEngine.preAfterTest(CURRENT_TEST_RESULT.get(), CURRENT_TEST_TIME_RECORD.get(), methodInfo);
-            afterEach();
-           // PluginExecutionEngine.postAfterTest(CURRENT_TEST_RESULT.get(), methodInfo);
-        } catch (Exception e) {
-            e.printStackTrace();
-            PluginExecutionEngine.afterTestFailed(e);
+        var methodInfo = testInfo.getTestMethod().orElseThrow();
+        var failures = new FailureCollector();
+        failures.run(() -> PluginExecutionEngine.preAfterTest(CURRENT_TEST_RESULT.get(), methodInfo));
+        if (failures.getFailure() != null) {
+            CURRENT_TEST_RESULT.set(TestResult.FAILURE);
         }
+        failures.run(() -> PluginExecutionEngine.preAfterTest(CURRENT_TEST_RESULT.get(), CURRENT_TEST_TIME_RECORD.get(), methodInfo));
+        if (failures.getFailure() != null) {
+            CURRENT_TEST_RESULT.set(TestResult.FAILURE);
+        }
+        failures.run(this::afterEach);
+        if (failures.getFailure() != null) {
+            CURRENT_TEST_RESULT.set(TestResult.FAILURE);
+            failures.run(() -> PluginExecutionEngine.afterTestFailed(FailureCollector.asException(failures.getFailure())));
+        }
+        failures.throwIfAny();
     }
 
     @AfterAll
     public void afterClassCore(TestInfo testInfo) {
-        try {
-            var testClass = testInfo.getTestClass();
-            if (testClass.isPresent()) {
-                PluginExecutionEngine.preAfterClass(testClass.get());
-                afterClass();
-                PluginExecutionEngine.postAfterClass(testClass.get());
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-            PluginExecutionEngine.afterClassFailed(e);
+        if (!classInitializationAttempted) {
+            return;
         }
+        var failures = new FailureCollector();
+        try {
+            var testClass = testInfo.getTestClass().orElseThrow();
+            failures.run(() -> PluginExecutionEngine.preAfterClass(testClass));
+            failures.run(this::afterClass);
+            failures.run(() -> PluginExecutionEngine.postAfterClass(testClass));
+            if (failures.getFailure() != null) {
+                failures.run(() -> PluginExecutionEngine.afterClassFailed(FailureCollector.asException(failures.getFailure())));
+            }
+        } finally {
+            if (pluginScope != null) {
+                failures.run(pluginScope::close);
+                pluginScope = null;
+            }
+            CURRENT_TEST_RESULT.remove();
+            CURRENT_TEST_TIME_RECORD.remove();
+        }
+        failures.throwIfAny();
     }
 
     protected String getTestName() {
-        return this.testInfo.getTestMethod().get().getName();
+        return this.testInfo.getTestMethod().orElseThrow().getName();
     }
 
     protected void configure() {

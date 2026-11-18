@@ -5,6 +5,7 @@ import org.openqa.selenium.WebElement;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
 import org.openqa.selenium.interactions.PointerInput;
+import org.openqa.selenium.interactions.Interactive;
 import org.openqa.selenium.interactions.Sequence;
 
 import java.time.Duration;
@@ -18,6 +19,11 @@ public class TouchableWebDriver extends ChromeDriver implements WebDriver  {
 
     public void triggerSwipeEvent(WebElement swipeFromElement)
     {
+        triggerSwipeEvent(this, swipeFromElement);
+    }
+
+    public static void triggerSwipeEvent(Interactive driver, WebElement swipeFromElement)
+    {
         PointerInput finger = new PointerInput(PointerInput.Kind.TOUCH, "finger");
         Sequence tap = new Sequence(finger, 1);
 
@@ -26,10 +32,15 @@ public class TouchableWebDriver extends ChromeDriver implements WebDriver  {
         tap.addAction(finger.createPointerDown(PointerInput.MouseButton.LEFT.asArg()));
         tap.addAction(finger.createPointerMove(Duration.ofMillis(100), PointerInput.Origin.viewport(), swipeFromElement.getLocation().x, swipeFromElement.getLocation().y + (swipeFromElement.getSize().getHeight()/ 2 )));
         tap.addAction(finger.createPointerUp(PointerInput.MouseButton.LEFT.asArg()));
-        this.perform(Arrays.asList(tap));
+        driver.perform(Arrays.asList(tap));
     }
 
     public void triggerTapEvent(WebElement swipeFromElement)
+    {
+        triggerTapEvent(this, swipeFromElement);
+    }
+
+    public static void triggerTapEvent(Interactive driver, WebElement swipeFromElement)
     {
         PointerInput finger = new PointerInput(PointerInput.Kind.TOUCH, "finger");
         Sequence tap = new Sequence(finger, 1);
@@ -41,7 +52,7 @@ public class TouchableWebDriver extends ChromeDriver implements WebDriver  {
         tap.addAction(finger.createPointerMove(Duration.ofMillis(0), PointerInput.Origin.viewport(), centerX, centerY));
         tap.addAction(finger.createPointerDown(PointerInput.MouseButton.LEFT.asArg()));
         tap.addAction(finger.createPointerUp(PointerInput.MouseButton.LEFT.asArg()));
-        this.perform(Arrays.asList(tap));
+        driver.perform(Arrays.asList(tap));
     }
 
     public void triggerHoldEvent(WebElement swipeFromElement) {

@@ -14,16 +14,14 @@
 package solutions.bellatrix.core.configuration;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
-import lombok.SneakyThrows;
 import lombok.experimental.UtilityClass;
 import org.apache.commons.io.IOUtils;
-import solutions.bellatrix.core.utilities.DebugInformation;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.Objects;
 import java.util.Properties;
 
 @UtilityClass
@@ -39,12 +37,11 @@ public final class ConfigurationService {
         if (environment == null) {
             String environmentOverride = System.getProperty("environment");
             if (environmentOverride == null) {
-                InputStream input = ConfigurationService.class.getResourceAsStream("/application.properties");
                 var p = new Properties();
-                try {
+                try (var input = openResource("application.properties")) {
                     p.load(input);
                 } catch (IOException e) {
-                    return mappedObject;
+                    throw new IllegalStateException("Could not read configuration resource: application.properties", e);
                 }
 
                 environment = p.getProperty("environment");
@@ -57,7 +54,13 @@ public final class ConfigurationService {
         String jsonFileContent = getFileAsString(fileName);
         String sectionName = getSectionName(configSection);
 
-        var jsonObject = JsonParser.parseString(jsonFileContent).getAsJsonObject().get(sectionName).toString();
+        JsonElement sectionFound = JsonParser.parseString(jsonFileContent).getAsJsonObject().get(sectionName);
+        if (sectionFound == null) {
+            return mappedObject;
+        }
+        var section = sectionFound.getAsJsonObject();
+        applyOverrides(section, sectionName, System.getProperties());
+        var jsonObject = section.toString();
 
         var gson = new Gson();
 
@@ -70,20 +73,52 @@ public final class ConfigurationService {
         return mappedObject;
     }
 
+    static void applyOverrides(com.google.gson.JsonObject section, String sectionName, Properties properties) {
+        String prefix = "test.settings." + sectionName + ".";
+        for (String key : properties.stringPropertyNames()) {
+            if (!key.startsWith(prefix)) {
+                continue;
+            }
+            String[] path = key.substring(prefix.length()).split("\\.");
+            var target = section;
+            for (int i = 0; i < path.length - 1; i++) {
+                if (!target.has(path[i]) || !target.get(path[i]).isJsonObject()) {
+                    throw new IllegalArgumentException("Unknown configuration override: " + key);
+                }
+                target = target.getAsJsonObject(path[i]);
+            }
+            String name = path[path.length - 1];
+            if (!target.has(name)) {
+                throw new IllegalArgumentException("Unknown configuration override: " + key);
+            }
+            String value = properties.getProperty(key);
+            if (target.get(name).isJsonArray() || target.get(name).isJsonObject()) {
+                target.add(name, JsonParser.parseString(value));
+            } else {
+                target.addProperty(name, value);
+            }
+        }
+    }
+
     public static String getSectionName(Class<?> configSection) {
         var sb = new StringBuilder(configSection.getSimpleName());
         sb.setCharAt(0, Character.toLowerCase(sb.charAt(0)));
         return sb.toString();
     }
 
-    @SneakyThrows
     public static String getFileAsString(String fileName) {
-        InputStream input = ConfigurationService.class.getResourceAsStream("/" + fileName);
-        try {
-            return IOUtils.toString(Objects.requireNonNull(input), StandardCharsets.UTF_8);
+        try (var input = openResource(fileName)) {
+            return IOUtils.toString(input, StandardCharsets.UTF_8);
         } catch (IOException e) {
-            DebugInformation.printStackTrace(new IOException("Couldn't load '" + fileName + "'"));
-            return "";
+            throw new IllegalStateException("Could not read configuration resource: " + fileName, e);
         }
+    }
+
+    private static InputStream openResource(String fileName) {
+        var input = ConfigurationService.class.getResourceAsStream("/" + fileName);
+        if (input == null) {
+            throw new IllegalStateException("Missing configuration resource: " + fileName);
+        }
+        return input;
     }
 }

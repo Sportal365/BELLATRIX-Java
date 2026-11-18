@@ -19,12 +19,20 @@ import solutions.bellatrix.playwright.components.contracts.ComponentAccept;
 import solutions.bellatrix.playwright.components.contracts.ComponentMultiple;
 import solutions.bellatrix.playwright.components.contracts.ComponentRequired;
 
+import java.nio.file.Path;
+
 public class FileInput extends WebComponent implements ComponentRequired, ComponentMultiple, ComponentAccept {
     public final static EventListener<ComponentActionEventArgs> UPLOADING = new EventListener<>();
     public final static EventListener<ComponentActionEventArgs> UPLOADED = new EventListener<>();
 
     public void upload(String file) {
-        defaultSetText(UPLOADING, UPLOADED, file);
+        upload(Path.of(file));
+    }
+
+    public void upload(Path file) {
+        UPLOADING.broadcast(new ComponentActionEventArgs(this, file.toString()));
+        getWrappedElement().setInputFiles(file);
+        UPLOADED.broadcast(new ComponentActionEventArgs(this, file.toString()));
     }
 
     @Override

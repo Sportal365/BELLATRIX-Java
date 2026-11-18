@@ -19,6 +19,10 @@ import com.microsoft.playwright.Page;
 import java.util.function.Function;
 
 public class LocatorOptions extends Options<Page.LocatorOptions, Locator.LocatorOptions> {
+    public LocatorOptions() {
+        super(new Page.LocatorOptions(), new Locator.LocatorOptions());
+    }
+
     private void setAbsolute(Function<Page.LocatorOptions, Page.LocatorOptions> method) {
         invokeAbsolute(method);
     }

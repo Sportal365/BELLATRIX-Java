@@ -13,15 +13,32 @@
 
 package solutions.bellatrix.web.pages;
 
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import solutions.bellatrix.web.components.Div;
 import solutions.bellatrix.web.services.App;
 import solutions.bellatrix.web.services.ComponentCreateService;
 
 public abstract class PageMap {
+    @Getter
+    @AllArgsConstructor
+    public enum ShadowHostType {
+        SIDEBAR("sidebar"),
+        TOP_BAR("top-bar"),
+        CMS_TNG("cms-tng");
+
+        private final String value;
+    }
+
     public ComponentCreateService create() {
         return app().create();
     }
 
     public App app() {
         return new App();
+    }
+
+    public Div cmsShadowRoot(ShadowHostType hostType) {
+        return create().byXPath(Div.class, String.format("//div[@data-micro-app='%s']", hostType.getValue()));
     }
 }

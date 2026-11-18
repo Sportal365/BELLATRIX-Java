@@ -43,15 +43,11 @@ public class PlaceholderFindStrategy extends PatternStrategy {
 
     @Override
     public WebElement convert(Page page) {
-        if (text != null) return get(page, By.PLACEHOLDER, text, ((PlaceholderOptions)options).absolute());
-        if (pattern != null) return get(page, By.PLACEHOLDER, pattern, ((PlaceholderOptions)options).absolute());
-        return null;
+        return get(page, By.PLACEHOLDER, searchValue(), options == null ? null : options.absolute());
     }
 
     @Override
     public WebElement convert(WebElement locator) {
-        if (text != null) return get(locator, By.PLACEHOLDER, text, ((PlaceholderOptions)options).relative());
-        if (pattern != null) return get(locator, By.PLACEHOLDER, pattern, ((PlaceholderOptions)options).relative());
-        return null;
+        return get(locator, By.PLACEHOLDER, searchValue(), options == null ? null : options.relative());
     }
 }

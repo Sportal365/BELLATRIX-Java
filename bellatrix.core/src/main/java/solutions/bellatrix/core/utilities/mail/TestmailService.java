@@ -14,18 +14,9 @@ package solutions.bellatrix.core.utilities.mail;
 
 import io.restassured.RestAssured;
 import io.restassured.http.ContentType;
-import lombok.SneakyThrows;
-import org.openqa.selenium.WebDriver;
-import solutions.bellatrix.core.utilities.TimestampBuilder;
 import solutions.bellatrix.core.utilities.mail.models.EmailsItem;
 import solutions.bellatrix.core.utilities.mail.models.EmailsResponse;
 
-import java.io.BufferedWriter;
-import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -39,27 +30,12 @@ public class TestmailService {
         this.namespace = namespace;
     }
 
-    @SneakyThrows
-    public String loadEmailBody(WebDriver driver, String htmlBody, boolean cloudExecuted) {
+    public String loadEmailBody(java.util.function.Consumer<String> loadContent, String htmlBody) {
         htmlBody = htmlBody.replace("\n", "").replace("\\/", "/").replace("\\\"", "\"");
-        String fileName = String.format("%s.html", TimestampBuilder.getGuid());
-        var file = writeStringToTempFile(htmlBody);
-        if (cloudExecuted) {
-            driver.get("http://local-folder.lambdatest.com/" + fileName);
-        } else {
-            driver.get(file.toPath().toUri().toString());
-        }
-
+        loadContent.accept(htmlBody);
         return htmlBody;
     }
 
-    private File writeStringToTempFile(String fileContent) throws IOException {
-        Path tempFile = Files.createTempFile(null, ".html");
-        try (var bw = new BufferedWriter(new FileWriter(tempFile.toFile()))) {
-            bw.write(fileContent);
-        }
-        return tempFile.toFile();
-    }
 
     public EmailsItem getLastSentEmail(String inboxName) {
         var allEmails = getAllEmails();

@@ -19,6 +19,10 @@ import com.microsoft.playwright.Page;
 import java.util.function.Function;
 
 public class TextOptions extends Options<Page.GetByTextOptions, Locator.GetByTextOptions> {
+    public TextOptions() {
+        super(new Page.GetByTextOptions(), new Locator.GetByTextOptions());
+    }
+
     private void setAbsolute(Function<Page.GetByTextOptions, Page.GetByTextOptions> method) {
         invokeAbsolute(method);
     }

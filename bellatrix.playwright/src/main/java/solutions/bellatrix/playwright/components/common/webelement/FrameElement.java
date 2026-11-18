@@ -99,6 +99,16 @@ public class FrameElement extends WebElement {
     }
 
     @Override
+    public WebElement getByTestId(String testId) {
+        return new WebElement(wrappedFrameLocator.getByTestId(testId));
+    }
+
+    @Override
+    public WebElement getByTestId(Pattern testId) {
+        return new WebElement(wrappedFrameLocator.getByTestId(testId));
+    }
+
+    @Override
     public WebElement getByText(String text, GetByTextOptions options) {
         return new WebElement(wrappedFrameLocator.getByText(text, options.convertTo(FrameLocator.GetByTextOptions.class)));
     }

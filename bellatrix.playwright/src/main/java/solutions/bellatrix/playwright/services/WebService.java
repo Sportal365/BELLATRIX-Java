@@ -16,8 +16,10 @@ package solutions.bellatrix.playwright.services;
 import solutions.bellatrix.playwright.infrastructure.PlaywrightService;
 import solutions.bellatrix.playwright.infrastructure.WrappedBrowser;
 
+import java.util.Objects;
+
 public abstract class WebService {
     protected static WrappedBrowser wrappedBrowser() {
-        return PlaywrightService.wrappedBrowser();
+        return Objects.requireNonNull(PlaywrightService.wrappedBrowser(), "No browser is running on this thread");
     }
 }

@@ -23,6 +23,7 @@ public enum BrowserTypes {
     CHROMIUM_HEADLESS("chromium_headless"),
     CHROME("chrome"),
     CHROME_HEADLESS("chrome_headless"),
+    CHROME_MOBILE("chrome_mobile"),
     FIREFOX("firefox"),
     FIREFOX_HEADLESS("firefox_headless"),
     EDGE("edge"),
@@ -43,6 +44,6 @@ public enum BrowserTypes {
     public static BrowserTypes fromText(String text) {
         return Arrays.stream(values())
                 .filter(l -> l.value.equalsIgnoreCase(text))
-                .findFirst().orElse(BrowserTypes.CHROME);
+                .findFirst().orElse(BrowserTypes.CHROMIUM_HEADLESS);
     }
 }

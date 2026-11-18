@@ -13,10 +13,8 @@
 
 package solutions.bellatrix.playwright.components;
 
-import solutions.bellatrix.core.utilities.InstanceFactory;
+import com.microsoft.playwright.FrameLocator;
 import solutions.bellatrix.playwright.components.common.webelement.FrameElement;
-import solutions.bellatrix.playwright.findstrategies.FindStrategy;
-import solutions.bellatrix.playwright.components.common.webelement.WebElement;
 
 public class Frame extends WebComponent {
     public Frame() {
@@ -27,25 +25,7 @@ public class Frame extends WebComponent {
         return defaultGetName();
     }
 
-    @Override
-    /**
-     * Convert this component to another type of component.
-     * @param componentClass type of component
-     */
-    public <ComponentT extends WebComponent> ComponentT as(Class<ComponentT> componentClass) {
-        if (componentClass == this.getClass()) return (ComponentT)this;
-
-        var component = InstanceFactory.create(componentClass);
-        var element = ((FrameElement)this.wrappedElement).owner();
-        component.setWrappedElement(element);
-
-        var findStrategy = (FindStrategy)this.findStrategy.clone();
-        findStrategy.setWebElement(element);
-        component.setFindStrategy(findStrategy);
-
-        component.setParentComponent(getParentComponent());
-        component.setElementIndex(getElementIndex());
-
-        return component;
+    public FrameLocator frameLocator() {
+        return ((FrameElement) getWrappedElement()).getWrappedFrameLocator();
     }
 }

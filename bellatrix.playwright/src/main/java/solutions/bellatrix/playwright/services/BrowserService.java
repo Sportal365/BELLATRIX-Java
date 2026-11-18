@@ -16,16 +16,23 @@ package solutions.bellatrix.playwright.services;
 import com.microsoft.playwright.BrowserContext;
 import com.microsoft.playwright.ConsoleMessage;
 import com.microsoft.playwright.Page;
+import com.microsoft.playwright.PlaywrightException;
+import com.microsoft.playwright.TimeoutError;
 import com.microsoft.playwright.assertions.PageAssertions;
 import com.microsoft.playwright.assertions.PlaywrightAssertions;
 import com.microsoft.playwright.options.LoadState;
+import com.microsoft.playwright.options.WaitUntilState;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.text.StringEscapeUtils;
-import org.testng.Assert;
+import org.junit.jupiter.api.Assertions;
+import solutions.bellatrix.core.utilities.Log;
+import solutions.bellatrix.core.utilities.SecretMasker;
 import solutions.bellatrix.core.utilities.SingletonFactory;
 import solutions.bellatrix.core.utilities.Wait;
 import solutions.bellatrix.playwright.components.Frame;
 import solutions.bellatrix.playwright.components.common.validate.Validator;
+import solutions.bellatrix.playwright.infrastructure.WrappedBrowser;
+import solutions.bellatrix.playwright.infrastructure.httptraffic.HttpMethod;
 import solutions.bellatrix.playwright.utilities.DebugLogger;
 import solutions.bellatrix.playwright.utilities.Settings;
 import solutions.bellatrix.playwright.utilities.functionalinterfaces.Assertable;
@@ -34,12 +41,178 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.function.BooleanSupplier;
+import java.util.function.Predicate;
+import java.util.logging.Level;
 import java.util.regex.Pattern;
 
-@SuppressWarnings("ALL")
 public class BrowserService extends WebService {
+    private static final Pattern CONSOLE_POSITION = Pattern.compile(":\\d+:\\d+$");
+
+    public BrowserContext context() {
+        return Objects.requireNonNull(wrappedBrowser().getCurrentContext(), "No browser context is open");
+    }
+
+    public String version() {
+        return wrappedBrowser().getBrowser().version();
+    }
+
+    public List<String> consoleErrors() {
+        var browser = wrappedBrowser();
+        browser.deliverPendingEvents();
+        return browser.getConsoleErrors();
+    }
+
+    public List<WrappedBrowser.ConsoleEntry> consoleEntries() {
+        var browser = wrappedBrowser();
+        browser.deliverPendingEvents();
+        return browser.getConsoleEntries();
+    }
+
+    public void discardConsoleErrors(Predicate<WrappedBrowser.ConsoleEntry> expectedError) {
+        var browser = wrappedBrowser();
+        browser.deliverPendingEvents();
+        browser.discardConsoleErrors(expectedError);
+    }
+
+    /**
+     * Declares console errors the test expects, before the action that causes them. The console checks leave them out
+     * whenever they arrive.
+     */
+    public void expectConsoleErrors(Predicate<WrappedBrowser.ConsoleEntry> expectedError) {
+        wrappedBrowser().expectConsoleErrors(expectedError);
+    }
+
+    public List<String> getSevereLogEntries() {
+        var browser = wrappedBrowser();
+        browser.deliverPendingEvents();
+        List<String> whitelist = consoleErrorsWhitelist();
+        List<String> messages = browser.getConsoleErrors();
+        List<WrappedBrowser.ConsoleEntry> errors = consoleErrorEntries();
+        List<String> severe = new ArrayList<>();
+        for (int index = 0; index < messages.size(); index++) {
+            String logLine = index < errors.size() ? consoleLogLine(errors.get(index)) : messages.get(index);
+            if (whitelist.stream().noneMatch(logLine::contains)) {
+                severe.add(messages.get(index));
+            }
+        }
+        return List.copyOf(severe);
+    }
+
+    public void assertNoConsoleErrorsLogged() {
+        var errors = getSevereLogEntries();
+        org.junit.jupiter.api.Assertions.assertEquals(List.of(), errors, () -> {
+            List<String> whitelist = consoleErrorsWhitelist();
+            List<String> locations = consoleErrorEntries().stream()
+                    .filter(entry -> whitelist.stream().noneMatch(consoleLogLine(entry)::contains))
+                    .map(entry -> consoleResourceLocation(withoutConsolePosition(entry.location())))
+                    .filter(Objects::nonNull)
+                    .distinct()
+                    .toList();
+            String message = "Severe errors found in browser console";
+            return locations.isEmpty() ? message : message + " (resource locations: " + locations + ")";
+        });
+    }
+
+    private List<WrappedBrowser.ConsoleEntry> consoleErrorEntries() {
+        var browser = wrappedBrowser();
+        return browser.getConsoleEntries().stream()
+                .filter(entry -> "error".equals(entry.type()) && !browser.isExpectedConsoleError(entry)).toList();
+    }
+
+    private static List<String> consoleErrorsWhitelist() {
+        return Objects.requireNonNullElse(Settings.web().getConsoleErrorsWhitelist(), List.of());
+    }
+
+    private static String consoleLogLine(WrappedBrowser.ConsoleEntry entry) {
+        String location = withoutConsolePosition(entry.location());
+        return location == null || location.isEmpty() ? entry.message() : location + " - " + entry.message();
+    }
+
+    private static String withoutConsolePosition(String location) {
+        return location == null ? null : CONSOLE_POSITION.matcher(location).replaceFirst("");
+    }
+
+    private static String consoleResourceLocation(String location) {
+        if (location == null) {
+            return null;
+        }
+        try {
+            var uri = URI.create(location);
+            if (uri.getHost() == null || !("http".equals(uri.getScheme()) || "https".equals(uri.getScheme()))) {
+                return null;
+            }
+            String port = uri.getPort() < 0 ? "" : ":" + uri.getPort();
+            return SecretMasker.mask(uri.getScheme() + "://" + uri.getHost() + port + uri.getRawPath());
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
+    }
+
+    public void assertConsoleErrorLogged(String message, Level level) {
+        var type = switch (level.getName()) {
+            case "SEVERE" -> "error";
+            case "WARNING" -> "warning";
+            default -> throw new IllegalArgumentException("Unsupported console severity: " + level);
+        };
+        var browser = wrappedBrowser();
+        var options = new BrowserContext.WaitForConditionOptions();
+        var timeout = Settings.timeout().inMilliseconds().getValidationsTimeout();
+        if (timeout > 0) {
+            options.setTimeout(timeout);
+        }
+        try {
+            waitForCondition(() -> browser.getConsoleEntries().stream()
+                    .anyMatch(entry -> type.equals(entry.type()) && entry.message().contains(message)), options);
+        } catch (TimeoutError timedOut) {
+            org.junit.jupiter.api.Assertions.fail("Expected console " + type + " containing " + message
+                    + " within " + timeout + " ms but found " + browser.getConsoleEntries());
+        }
+    }
+
+    /**
+     * Closes a page of the current context, also one that is still loading.
+     */
+    public void closePage(Page page) {
+        wrappedBrowser().closePage(page);
+    }
+
+    public void copyTextToClipboard(String text) {
+        var page = clipboardPage();
+        page.evaluate("text => navigator.clipboard.writeText(text)", Objects.requireNonNull(text));
+    }
+
+    public String getLastClipboardEntry() {
+        return (String) clipboardPage().evaluate("() => navigator.clipboard.readText()");
+    }
+
+    public void runAndWaitForClipboardCopy(Runnable action) {
+        var page = clipboardPage();
+        page.evaluate("() => navigator.clipboard.writeText('')");
+        action.run();
+        waitUntil(() -> !((String) page.evaluate("() => navigator.clipboard.readText()")).isEmpty());
+    }
+
+    private Page clipboardPage() {
+        var page = page();
+        if (!Boolean.TRUE.equals(page.evaluate("() => Boolean(navigator.clipboard)"))) {
+            throw new IllegalStateException("Browser clipboard requires a secure page");
+        }
+        var permissions = List.of("clipboard-read", "clipboard-write");
+        if ("file".equalsIgnoreCase(URI.create(page.url()).getScheme())) {
+            context().grantPermissions(permissions);
+        } else {
+            var origin = (String) page.evaluate("location.origin");
+            context().grantPermissions(permissions, new BrowserContext.GrantPermissionsOptions().setOrigin(origin));
+        }
+        page.bringToFront();
+        return page;
+    }
+
     public String getUrl() {
         return page().url();
     }
@@ -64,32 +237,8 @@ public class BrowserService extends WebService {
         return page().content();
     }
 
-    /**
-     * Not possible to implement.
-     */
-    @Deprecated
-    public void maximize() {
-    }
-
-    /**
-     * Not possible to implement.
-     */
-    @Deprecated
-    public void minimize() {
-    }
-
-    /**
-     * Not possible to implement.
-     */
-    @Deprecated
-    public void switchToDefault() {
-    }
-
-    /**
-     * Not possible to implement.
-     */
-    @Deprecated
-    public void switchToActive() {
+    public void setSize(int width, int height) {
+        page().setViewportSize(width, height);
     }
 
     public void scrollToBottom() {
@@ -105,7 +254,7 @@ public class BrowserService extends WebService {
      * @param action Callback that performs the action triggering the event.
      */
     public Page runAndWaitForPage(Runnable action) {
-        return wrappedBrowser().getCurrentContext().waitForPage(action);
+        return context().waitForPage(action);
     }
 
     /**
@@ -115,7 +264,11 @@ public class BrowserService extends WebService {
      * @param action Callback that performs the action triggering the event.
      */
     public Page runAndWaitForPage(Runnable action, BrowserContext.WaitForPageOptions options) {
-        return wrappedBrowser().getCurrentContext().waitForPage(options, action);
+        return context().waitForPage(options, action);
+    }
+
+    public Page runAndWaitForPopup(Runnable action) {
+        return page().waitForPopup(action);
     }
 
     public void waitForCondition(BooleanSupplier condition) {
@@ -124,6 +277,24 @@ public class BrowserService extends WebService {
 
     public void waitForCondition(BooleanSupplier condition, BrowserContext.WaitForConditionOptions options) {
         wrappedBrowser().getCurrentContext().waitForCondition(condition, options);
+    }
+
+    public void waitUntil(BooleanSupplier condition) {
+        var options = new BrowserContext.WaitForConditionOptions();
+        var timeout = Settings.timeout().inMilliseconds().getWaitUntilReadyTimeout();
+        if (timeout > 0) {
+            options.setTimeout(timeout);
+        }
+        waitForCondition(condition, options);
+    }
+
+    public boolean tryWaitUntil(BooleanSupplier condition) {
+        try {
+            waitUntil(condition);
+            return true;
+        } catch (TimeoutError timeout) {
+            return false;
+        }
     }
 
     public ConsoleMessage runAndWaitForConsoleMessage(Runnable action) {
@@ -139,8 +310,8 @@ public class BrowserService extends WebService {
      * one should pass the action to {@link #runAndWaitForPage(Runnable, BrowserContext.WaitForPageOptions)}.
      */
     public void switchToTab(Page page) {
-        page.bringToFront();
         wrappedBrowser().setCurrentPage(page);
+        page.bringToFront();
     }
 
     /**
@@ -200,19 +371,19 @@ public class BrowserService extends WebService {
     }
 
     public void removeItemFromLocalStorage(String item) {
-        page().evaluate(String.format("window.localStorage.removeItem('%s');", item));
+        page().evaluate("key => localStorage.removeItem(key)", item);
     }
 
     public boolean isItemPresentInLocalStorage(String item) {
-        return page().evaluate(String.format("window.localStorage.getItem('%s');", item)) == null;
+        return getItemFromLocalStorage(item) != null;
     }
 
     public String getItemFromLocalStorage(String key) {
-        return (String)page().evaluate(String.format("window.localStorage.getItem('%s');", key));
+        return (String) page().evaluate("key => localStorage.getItem(key)", key);
     }
 
     public void setItemInLocalStorage(String item, String value) {
-        page().evaluate(String.format("window.localStorage.setItem('%s','%s');", item, value));
+        page().evaluate("([key, value]) => localStorage.setItem(key, value)", new String[]{item, value});
     }
 
     public void clearLocalStorage() {
@@ -296,7 +467,7 @@ public class BrowserService extends WebService {
 
     public void waitForReactPageLoadsCompletely() {
         long waitUntilReadyTimeout = Settings.timeout().inMilliseconds().getWaitUntilReadyTimeout();
-        long sleepInterval = Settings.timeout().inMilliseconds().getSleepInterval();
+        long pollingInterval = Validator.CONDITION_POLLING_INTERVAL_MILLISECONDS;
 
         Wait.Comparator dataReactRootNotNull = () -> {
             return (boolean)page().evaluate("document.querySelector('data-reactroot') !== null");
@@ -306,38 +477,40 @@ public class BrowserService extends WebService {
             return (boolean)page().evaluate("window.performance.timing.loadEventEnd > 0");
         };
 
-        Validator.validateCondition(dataReactRootNotNull, waitUntilReadyTimeout, sleepInterval);
-        Validator.validateCondition(loadEventEndBiggerThanZero, waitUntilReadyTimeout, sleepInterval);
+        Validator.validateCondition(dataReactRootNotNull, waitUntilReadyTimeout, pollingInterval);
+        Validator.validateCondition(loadEventEndBiggerThanZero, waitUntilReadyTimeout, pollingInterval);
     }
 
     public void waitForJavaScriptAnimations() {
         long waitForJavaScriptAnimationsTimeout = Settings.timeout().inMilliseconds().getWaitForJavaScriptAnimationsTimeout();
-        long sleepInterval = Settings.timeout().inMilliseconds().getSleepInterval();
+        long pollingInterval = Validator.CONDITION_POLLING_INTERVAL_MILLISECONDS;
 
         Wait.Comparator javaScriptAnimationsWait = () -> {
             return (boolean)page().evaluate("jQuery && jQuery(':animated').length === 0");
         };
 
-        Validator.validateCondition(javaScriptAnimationsWait, waitForJavaScriptAnimationsTimeout, sleepInterval);
+        Validator.validateCondition(javaScriptAnimationsWait, waitForJavaScriptAnimationsTimeout, pollingInterval);
     }
 
     public void waitForPartialUrl(String partialUrl) {
-        long waitForPartialUrlTimeout = Settings.timeout().inMilliseconds().getWaitForPartialUrl();
-        long sleepInterval = Settings.timeout().inMilliseconds().getSleepInterval();
-
-        page().waitForURL(x -> x.contains(partialUrl));
+        var options = new Page.WaitForURLOptions().setWaitUntil(WaitUntilState.COMMIT);
+        var timeout = Settings.timeout().inMilliseconds().getWaitForPartialUrl();
+        if (timeout > 0) {
+            options.setTimeout(timeout);
+        }
+        page().waitForURL(url -> url.contains(partialUrl), options);
     }
 
     public void waitForAngular() {
         long angularTimeout = Settings.timeout().inMilliseconds().getWaitForAngularTimeout();
-        long sleepInterval = Settings.timeout().inMilliseconds().getSleepInterval();
+        long pollingInterval = Validator.CONDITION_POLLING_INTERVAL_MILLISECONDS;
 
         String isAngular5 = (String)page().evaluate("getAllAngularRootElements()[0].attributes['ng-version']");
 
         if (StringUtils.isBlank(isAngular5)) {
             Validator.validateCondition(() -> {
                 return (boolean)page().evaluate("window.getAllAngularTestabilities().findIndex(x=>!x.isStable()) === -1");
-            }, angularTimeout, sleepInterval);
+            }, angularTimeout, pollingInterval);
         } else {
             boolean isAngularDefined = (boolean)page().evaluate("window.angular === undefined");
             if (!isAngularDefined) {
@@ -345,7 +518,7 @@ public class BrowserService extends WebService {
                 if (!isAngularInjectorUndefined) {
                     Validator.validateCondition(() -> {
                         return (boolean)page().evaluate("angular.element(document).injector().get('$http').pendingRequests.length === 0");
-                    }, angularTimeout, sleepInterval);
+                    }, angularTimeout, pollingInterval);
                 }
             }
         }
@@ -359,71 +532,84 @@ public class BrowserService extends WebService {
     }
 
     public void waitForAjax() {
-        long ajaxTimeout = Settings.timeout().inMilliseconds().getWaitForAjaxTimeout();
-        long sleepInterval = Settings.timeout().inMilliseconds().getSleepInterval();
-
-        Wait.Comparator ajaxComplete = () -> {
-            var numberOfAjaxConnection = page().evaluate("!isNaN(window.openHTTPs) ? window.openHTTPs : null");
-            if (Objects.nonNull(numberOfAjaxConnection)) {
-                int ajaxConnections = Integer.parseInt(numberOfAjaxConnection.toString());
-                return ajaxConnections == 0;
-            } else {
-                monkeyPatchXMLHttpRequest();
-            }
-
-            return false;
-        };
-
-        Validator.validateCondition(ajaxComplete, ajaxTimeout, sleepInterval);
+        waitForAjaxToComplete();
     }
 
-    private void monkeyPatchXMLHttpRequest() {
-        var numberOfAjaxConnections = page().evaluate("!isNaN(window.openHTTPs) ? window.openHTTPs : null");
+    public boolean waitForAjaxToComplete() {
+        var browser = wrappedBrowser();
+        var page = page();
+        requireOpenAjaxPage(browser, page);
+        double documentStartedAt = browser.documentStartedAt(page);
+        long latestAjaxAtStart = browser.latestAjaxSequence();
+        var options = new BrowserContext.WaitForConditionOptions();
+        var timeout = Settings.timeout().inMilliseconds().getWaitForAjaxTimeout();
+        if (timeout > 0) {
+            options.setTimeout(timeout);
+        }
+        try {
+            context().waitForCondition(() -> {
+                requireOpenAjaxPage(browser, page);
+                return !browser.hasPendingAjax(page, documentStartedAt);
+            }, options);
+            return true;
+        } catch (TimeoutError observationTimeout) {
+            requireOpenAjaxPage(browser, page);
+            Log.info("Timed out waiting for pending AJAX requests to complete. " + browser.pendingAjaxSummary(page));
+            // A request that was pending for the whole wait is hung: later waits must not pay the timeout for it again.
+            browser.stopAwaitingAjax(page, latestAjaxAtStart);
+            return false;
+        }
+    }
 
-        if (Objects.nonNull(numberOfAjaxConnections)) {
-            var ajaxConnections = Integer.parseInt(numberOfAjaxConnections.toString());
-        } else {
-            var script = "  (function() {" +
-                    "var oldOpen = XMLHttpRequest.prototype.open;" +
-                    "window.openHTTPs = 0;" +
-                    "XMLHttpRequest.prototype.open = function(method, url, async, user, pass) {" +
-                    "window.openHTTPs++;" +
-                    "this.addEventListener('readystatechange', function() {" +
-                    "if(this.readyState == 4) {" +
-                    "window.openHTTPs--;" +
-                    "}" +
-                    "}, false);" +
-                    "oldOpen.call(this, method, url, async, user, pass);" +
-                    "}" +
-                    "})();";
+    private static void requireOpenAjaxPage(WrappedBrowser browser, Page page) {
+        if (!browser.getBrowser().isConnected() || page.isClosed()) {
+            throw new PlaywrightException("Cannot observe AJAX after the browser page closed");
+        }
+    }
 
-            page().evaluate(script);
+    public void waitForRequest(String partialUrl) {
+        try {
+            waitForResource(partialUrl, null, Duration.ofSeconds(Settings.timeout().getWaitUntilReadyTimeout()));
+        } catch (TimeoutError timeout) {
+            throw new TimeoutError("No completed request matched " + partialUrl, timeout);
+        }
+    }
+
+    public void tryWaitForResponse(String partialUrl) {
+        tryWaitForResponse(partialUrl, 0);
+    }
+
+    public void tryWaitForResponse(String partialUrl, int additionalTimeoutInSeconds) {
+        try {
+            if (NetworkService.isCapturing()) {
+                NetworkService.waitForResponse(partialUrl, HttpMethod.GET, additionalTimeoutInSeconds);
+            } else {
+                var timeout = Duration.ofSeconds(Settings.timeout().getWaitForAjaxTimeout() + additionalTimeoutInSeconds);
+                waitForResource(partialUrl, null, timeout);
+            }
+        } catch (TimeoutError timeout) {
+            Log.info("Timed out waiting for the optional response matching %s", partialUrl);
         }
     }
 
     public void waitForAjaxRequest(String requestPartialUrl, int additionalTimeoutInSeconds) {
-        long ajaxTimeout = Settings.timeout().inMilliseconds().getWaitForAjaxTimeout();
-        long sleepInterval = Settings.timeout().inMilliseconds().getSleepInterval() + (additionalTimeoutInSeconds * 1000);
-        String script = String.format("performance.getEntriesByType('resource').filter(item => item.initiatorType == 'xmlhttprequest' && item.name.toLowerCase().includes('%s'))[0] !== undefined;", requestPartialUrl);
-        Wait.Comparator ajaxReadyState = () -> {
-            return (boolean)page().evaluate(script);
-        };
-
-        Validator.validateCondition(ajaxReadyState, ajaxTimeout, sleepInterval);
+        var timeout = Duration.ofSeconds(Settings.timeout().getWaitForAjaxTimeout() + additionalTimeoutInSeconds);
+        waitForResource(requestPartialUrl, "xhr", timeout);
     }
 
     public void waitForAjaxRequest(String requestPartialUrl) {
         waitForAjaxRequest(requestPartialUrl, 0);
     }
 
-    public void waitUntilPageLoadsCompletely() {
-        long waitUntilReadyTimeout = Settings.timeout().inMilliseconds().getWaitUntilReadyTimeout();
-        long sleepInterval = Settings.timeout().inMilliseconds().getSleepInterval();
-        Wait.Comparator readyStateEqualsComplete = () -> {
-            return page().evaluate("document.readyState").equals("complete");
-        };
+    private void waitForResource(String partialUrl, String resourceType, Duration timeout) {
+        if (timeout.isNegative()) {
+            throw new IllegalArgumentException("Request timeout must be nonnegative");
+        }
+        wrappedBrowser().waitForResource(page(), partialUrl, resourceType, timeout);
+    }
 
-        Validator.validateCondition(readyStateEqualsComplete, waitUntilReadyTimeout, sleepInterval);
+    public void waitUntilPageLoadsCompletely() {
+        waitUntil(LoadState.LOAD);
     }
 
     public void validateLandedOnPage(String partialUrl) {
@@ -435,8 +621,8 @@ public class BrowserService extends WebService {
             partialUrl = URLEncoder.encode(partialUrl, StandardCharsets.UTF_8);
         }
 
-        Pattern pattern = Pattern.compile(String.format(".*%s.*", partialUrl));
-        var timeout = Settings.timeout().getWaitForPartialUrl();
+        Pattern pattern = Pattern.compile(".*" + Pattern.quote(partialUrl) + ".*");
+        var timeout = Settings.timeout().inMilliseconds().getWaitForPartialUrl();
 
 
         Assertable assertion = () -> PlaywrightAssertions.assertThat(page()).hasURL(pattern, new PageAssertions.HasURLOptions().setTimeout(timeout));
@@ -446,7 +632,7 @@ public class BrowserService extends WebService {
     }
 
     public void validateNotLandedOnPage(String partialUrl) {
-        validateLandedOnPage(partialUrl, false);
+        validateNotLandedOnPage(partialUrl, false);
     }
 
     public void validateNotLandedOnPage(String partialUrl, boolean shouldUrlEncode) {
@@ -454,8 +640,8 @@ public class BrowserService extends WebService {
             partialUrl = URLEncoder.encode(partialUrl, StandardCharsets.UTF_8);
         }
 
-        Pattern pattern = Pattern.compile(String.format(".*%s.*", partialUrl));
-        var timeout = Settings.timeout().getWaitForPartialUrl();
+        Pattern pattern = Pattern.compile(".*" + Pattern.quote(partialUrl) + ".*");
+        var timeout = Settings.timeout().inMilliseconds().getWaitForPartialUrl();
 
         Assertable assertion = () -> PlaywrightAssertions.assertThat(page()).not().hasURL(pattern, new PageAssertions.HasURLOptions().setTimeout(timeout));
         String log = String.format("The expected partialUrl: %s was found in the page's url: %s", partialUrl, getUrl());
@@ -464,7 +650,7 @@ public class BrowserService extends WebService {
     }
 
     public void validateUrl(String fullUrl) {
-        var timeout = Settings.timeout().getValidationsTimeout();
+        var timeout = Settings.timeout().inMilliseconds().getValidationsTimeout();
         Assertable assertion = () -> PlaywrightAssertions.assertThat(page()).hasURL(fullUrl, new PageAssertions.HasURLOptions().setTimeout(timeout));
         String log = String.format("Expected URL:\n%s\nIs different than the actual one:\n%s", fullUrl, getUrl());
 
@@ -480,7 +666,7 @@ public class BrowserService extends WebService {
             throw new RuntimeException(e);
         }
 
-        Assert.assertEquals(urlPath, actualUri.getPath(),
+        Assertions.assertEquals(urlPath, actualUri.getPath(),
                 "Expected URL path is different than the Actual one.");
     }
 
@@ -493,11 +679,11 @@ public class BrowserService extends WebService {
             throw new RuntimeException(e);
         }
 
-        Assert.assertEquals(pathAndQuery, actualUri.getPath() + "?" + actualUri.getQuery(),
+        Assertions.assertEquals(pathAndQuery, actualUri.getPath() + "?" + actualUri.getQuery(),
                 "Expected URL is different than the Actual one.");
     }
 
-    private Page page() {
-        return wrappedBrowser().getCurrentPage();
+    public Page page() {
+        return Objects.requireNonNull(wrappedBrowser().getCurrentPage(), "No browser page is open");
     }
 }

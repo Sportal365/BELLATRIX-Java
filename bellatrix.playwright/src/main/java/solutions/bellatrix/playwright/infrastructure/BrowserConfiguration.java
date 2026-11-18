@@ -13,12 +13,14 @@
 
 package solutions.bellatrix.playwright.infrastructure;
 
+import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.Setter;
 
 import java.util.HashMap;
 
 @Getter @Setter
+@EqualsAndHashCode(exclude = "testName")
 public class BrowserConfiguration {
     private BrowserTypes browserTypes;
     private Lifecycle lifecycle;
@@ -26,7 +28,8 @@ public class BrowserConfiguration {
     private int width;
     private int version;
     private String testName;
-    private final HashMap<String, String> playwrightOptions;
+    private DeviceName deviceName = DeviceName.NOT_SET;
+    private final HashMap<String, Object> playwrightOptions;
 
     public BrowserConfiguration(BrowserTypes browserTypes, Lifecycle browserBehavior) {
         this.browserTypes = browserTypes;
@@ -39,20 +42,5 @@ public class BrowserConfiguration {
         this.lifecycle = browserBehavior;
         this.testName = testName;
         playwrightOptions = new HashMap<>();
-    }
-
-    @Override
-    public boolean equals(Object obj) {
-        if (!(obj instanceof BrowserConfiguration that))
-            return false;
-        if (!(this.getBrowserTypes() == null ? that.getBrowserTypes() == null : this.getBrowserTypes().equals(that.getBrowserTypes())))
-            return false;
-        if (!(this.getLifecycle() == null ? that.getLifecycle() == null : this.getLifecycle().equals(that.getLifecycle())))
-            return false;
-        if (this.getVersion() != that.getVersion())
-            return false;
-        if (!(this.getPlaywrightOptions() == null ? that.getPlaywrightOptions() == null : this.getPlaywrightOptions().equals(that.getPlaywrightOptions())))
-            return false;
-        return true;
     }
 }

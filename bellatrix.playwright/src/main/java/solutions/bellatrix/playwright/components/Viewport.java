@@ -25,8 +25,10 @@ public class Viewport implements LayoutComponent {
     Viewport() {
         var javaScriptService = new JavaScriptService();
         location = new Point(0, 0);
-        var viewportWidth = Integer.parseInt(javaScriptService.execute("return Math.max(document.documentElement.clientWidth, window.innerWidth || 0);").toString());
-        var viewportHeight = Integer.parseInt(javaScriptService.execute("return Math.max(document.documentElement.clientHeight, window.innerHeight || 0);").toString());
+        var viewportWidth = ((Number) javaScriptService.execute(
+                "Math.max(document.documentElement.clientWidth, window.innerWidth || 0)")).intValue();
+        var viewportHeight = ((Number) javaScriptService.execute(
+                "Math.max(document.documentElement.clientHeight, window.innerHeight || 0)")).intValue();
         size = new Dimension(viewportWidth, viewportHeight);
     }
 

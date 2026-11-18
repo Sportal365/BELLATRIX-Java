@@ -14,17 +14,12 @@
 package solutions.bellatrix.playwright.components.shadowdom;
 
 import solutions.bellatrix.core.plugins.EventListener;
-import solutions.bellatrix.core.utilities.HtmlService;
 import solutions.bellatrix.playwright.components.common.create.RelativeCreateService;
-import solutions.bellatrix.playwright.components.shadowdom.ShadowRoot;
-import solutions.bellatrix.playwright.components.WebComponent;
 import solutions.bellatrix.playwright.components.common.ComponentActionEventArgs;
+import solutions.bellatrix.playwright.components.common.webelement.WebElement;
+import solutions.bellatrix.playwright.findstrategies.CssFindStrategy;
 import solutions.bellatrix.playwright.findstrategies.FindStrategy;
-import solutions.bellatrix.playwright.findstrategies.ShadowXpathFindStrategy;
 import solutions.bellatrix.playwright.findstrategies.XpathFindStrategy;
-
-import java.util.ArrayList;
-import java.util.List;
 
 public class ShadowRootCreateService extends RelativeCreateService {
     public ShadowRootCreateService(ShadowRoot baseComponent, EventListener<ComponentActionEventArgs> creating, EventListener<ComponentActionEventArgs> created) {
@@ -32,28 +27,15 @@ public class ShadowRootCreateService extends RelativeCreateService {
     }
 
     @Override
-    public <TComponent extends WebComponent, TFindStrategy extends FindStrategy> TComponent by(Class<TComponent> componentClass, TFindStrategy findStrategy) {
-        CREATING.broadcast(new ComponentActionEventArgs((WebComponent)baseComponent));
-
-        wrappedBrowser().getCurrentPage().waitForLoadState();
-
-        TComponent newComponent = ShadowDomService.createFromShadowRoot((ShadowRoot)baseComponent, componentClass, findStrategy);
-
-        CREATED.broadcast(new ComponentActionEventArgs((WebComponent)baseComponent));
-
-        return newComponent;
-    }
-
-    @Override
-    public <TComponent extends WebComponent, TFindStrategy extends FindStrategy> List<TComponent> allBy(Class<TComponent> componentClass, TFindStrategy findStrategy) {
-        CREATING.broadcast(new ComponentActionEventArgs((WebComponent)baseComponent));
-
-        wrappedBrowser().getCurrentPage().waitForLoadState();
-
-        List<TComponent> componentList = ShadowDomService.createAllFromShadowRoot((ShadowRoot)baseComponent, componentClass, findStrategy);
-
-        CREATED.broadcast(new ComponentActionEventArgs((WebComponent)baseComponent));
-
-        return componentList;
+    protected WebElement locate(FindStrategy findStrategy) {
+        var host = baseComponent.getWrappedElement();
+        if (findStrategy instanceof XpathFindStrategy xpath) {
+            return host.locate("shadow=xpath:" + xpath.relativeExpression());
+        }
+        if (findStrategy instanceof CssFindStrategy css) {
+            var selector = css.getValue();
+            return host.locate("shadow=css:" + (selector.startsWith("css=") ? selector.substring(4) : selector));
+        }
+        return findStrategy.convert(host).and(host.locate("shadow=descendants"));
     }
 }

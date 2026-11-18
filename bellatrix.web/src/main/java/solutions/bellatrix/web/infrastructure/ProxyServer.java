@@ -14,12 +14,15 @@
 package solutions.bellatrix.web.infrastructure;
 
 import com.google.gson.*;
+import io.netty.buffer.Unpooled;
+import io.netty.handler.codec.http.DefaultFullHttpResponse;
+import io.netty.handler.codec.http.HttpResponse;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import lombok.SneakyThrows;
 import net.lightbody.bmp.BrowserMobProxyServer;
 import net.lightbody.bmp.core.har.HarEntry;
 import net.lightbody.bmp.proxy.CaptureType;
 import org.apache.http.HttpStatus;
-import org.asynchttpclient.uri.Uri;
 import org.openqa.selenium.TimeoutException;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.remote.http.HttpMethod;
@@ -33,6 +36,7 @@ import solutions.bellatrix.web.configuration.WebSettings;
 import java.io.IOException;
 import java.lang.reflect.Type;
 import java.net.ServerSocket;
+import java.net.URI;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
@@ -178,7 +182,7 @@ public class ProxyServer {
         try{
             ArrayList<String> allUrls = new ArrayList<>();
             allHarEntries.stream().forEach(e -> {
-                Uri uri = Uri.create(requestPartialUrl);
+                URI uri = URI.create(requestPartialUrl);
                 if(e.getRequest().getUrl().contains(uri.getHost()) || e.getRequest().getUrl().contains(requestPartialUrl)){
                     allUrls.add(String.format("[%s]%s[%s]", e.getRequest().getMethod(), e.getRequest().getUrl(), e.getResponse().getStatusText()));
                 }
@@ -337,6 +341,32 @@ public class ProxyServer {
 
     public static void clearblockRequestList() {
         PROXY_SERVER.get().clearBlacklist();
+    }
+
+    /**
+     * This method should be used when request must not reach the server and response is immediately returned
+     * This implementation will wipe all the request headers and there is a chance to hit CORS or some other edge scenarios.
+     * If you need add headers or the response in order to mock the desired request's response
+     *
+     * @param url      - the URL of the request
+     * @param jsonBody - the JSON body of the response
+     * @param statusCode - the status code of the response
+     */
+    public static void addRequestFilterWithModifiedResponse(String url, String jsonBody, int statusCode, String... headers) {
+        PROXY_SERVER.get().addRequestFilter((request, contents, messageInfo) -> {
+            if (messageInfo.getOriginalUrl().contains(url)) {
+                final HttpResponse response = new DefaultFullHttpResponse(
+                        request.getProtocolVersion(),
+                        HttpResponseStatus.valueOf(statusCode),
+                        Unpooled.copiedBuffer(jsonBody.getBytes()));
+                for (int i = 0; i < headers.length; i += 2) {
+                    response.headers().add(headers[i], headers[i + 1]);
+                }
+                return response;
+            } else {
+                throw new RuntimeException("The request is not mocked. The URL is not matching the expected URL.");
+            }
+        });
     }
 
     private static String getDataObject(String jsonString) {

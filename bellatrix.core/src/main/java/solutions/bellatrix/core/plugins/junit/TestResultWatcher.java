@@ -12,63 +12,75 @@
  */
 package solutions.bellatrix.core.plugins.junit;
 
+import org.junit.jupiter.api.extension.AfterEachCallback;
+import org.junit.jupiter.api.extension.AfterTestExecutionCallback;
+import org.junit.jupiter.api.extension.BeforeEachCallback;
 import org.junit.jupiter.api.extension.ExtensionContext;
-import org.junit.jupiter.api.extension.TestWatcher;
+import org.junit.jupiter.api.extension.LifecycleMethodExecutionExceptionHandler;
+import solutions.bellatrix.core.plugins.FailureCollector;
 import solutions.bellatrix.core.plugins.PluginExecutionEngine;
 import solutions.bellatrix.core.plugins.TestResult;
+import solutions.bellatrix.core.plugins.TimeRecord;
 
-import java.util.Optional;
-
-public class TestResultWatcher implements TestWatcher {
+public class TestResultWatcher implements BeforeEachCallback, AfterTestExecutionCallback,
+        AfterEachCallback, LifecycleMethodExecutionExceptionHandler {
     @Override
-    public void testAborted(ExtensionContext extensionContext, Throwable throwable) {
-        BaseTest.CURRENT_TEST_RESULT.set(TestResult.FAILURE);
-
-        try {
-            PluginExecutionEngine.postAfterTest(BaseTest.CURRENT_TEST_RESULT.get(), extensionContext.getTestMethod().get(), throwable); // DEPRECATED, LEFT FOR COMPATIBILITY
-
-            PluginExecutionEngine.postAfterTest(BaseTest.CURRENT_TEST_RESULT.get(), BaseTest.CURRENT_TEST_TIME_RECORD.get(), extensionContext.getTestMethod().get(), throwable);
-        } catch (Exception e) {
-            PluginExecutionEngine.afterTestFailed(e);
-        }
-    }
-
-    @Override
-    public void testDisabled(ExtensionContext extensionContext, Optional<String> optional) {
+    public void beforeEach(ExtensionContext context) {
         BaseTest.CURRENT_TEST_RESULT.set(TestResult.SUCCESS);
-
-        try {
-            PluginExecutionEngine.postAfterTest(BaseTest.CURRENT_TEST_RESULT.get(), extensionContext.getTestMethod().get(), null); // DEPRECATED, LEFT FOR COMPATIBILITY
-
-            PluginExecutionEngine.postAfterTest(BaseTest.CURRENT_TEST_RESULT.get(), BaseTest.CURRENT_TEST_TIME_RECORD.get(), extensionContext.getTestMethod().get(), null);
-        } catch (Exception e) {
-            PluginExecutionEngine.afterTestFailed(e);
-        }
+        var timeRecord = new TimeRecord();
+        timeRecord.setStartTime(System.currentTimeMillis());
+        BaseTest.CURRENT_TEST_TIME_RECORD.set(timeRecord);
     }
 
     @Override
-    public void testFailed(ExtensionContext extensionContext, Throwable throwable) {
+    public void afterTestExecution(ExtensionContext context) {
+        updateResult(context);
+    }
+
+    @Override
+    public void handleBeforeEachMethodExecutionException(ExtensionContext context, Throwable throwable) throws Throwable {
         BaseTest.CURRENT_TEST_RESULT.set(TestResult.FAILURE);
-
-        try {
-            PluginExecutionEngine.postAfterTest(BaseTest.CURRENT_TEST_RESULT.get(), extensionContext.getTestMethod().get(), throwable); // DEPRECATED, LEFT FOR COMPATIBILITY
-
-            PluginExecutionEngine.postAfterTest(BaseTest.CURRENT_TEST_RESULT.get(), BaseTest.CURRENT_TEST_TIME_RECORD.get(), extensionContext.getTestMethod().get(), throwable);
-        } catch (Exception e) {
-            PluginExecutionEngine.afterTestFailed(e);
-        }
+        throw throwable;
     }
 
     @Override
-    public void testSuccessful(ExtensionContext extensionContext) {
-        BaseTest.CURRENT_TEST_RESULT.set(TestResult.SUCCESS);
+    public void handleAfterEachMethodExecutionException(ExtensionContext context, Throwable throwable) throws Throwable {
+        BaseTest.CURRENT_TEST_RESULT.set(TestResult.FAILURE);
+        throw throwable;
+    }
 
+    @Override
+    public void afterEach(ExtensionContext context) {
+        var failures = new FailureCollector();
         try {
-            PluginExecutionEngine.postAfterTest(BaseTest.CURRENT_TEST_RESULT.get(), extensionContext.getTestMethod().get(), null); // DEPRECATED, LEFT FOR COMPATIBILITY
+            updateResult(context);
+            var timeRecord = BaseTest.CURRENT_TEST_TIME_RECORD.get();
+            if (timeRecord.getEndTime() == 0) {
+                timeRecord.setEndTime(System.currentTimeMillis());
+            }
+            var method = context.getRequiredTestMethod();
+            var testFailures = new FailureCollector(context.getExecutionException().orElse(null));
+            failures.run(() -> PluginExecutionEngine.postAfterTest(BaseTest.CURRENT_TEST_RESULT.get(), method, testFailures.getFailure()));
+            testFailures.run(failures::throwIfAny);
+            if (failures.getFailure() != null) {
+                BaseTest.CURRENT_TEST_RESULT.set(TestResult.FAILURE);
+            }
+            failures.run(() -> PluginExecutionEngine.postAfterTest(BaseTest.CURRENT_TEST_RESULT.get(), timeRecord, method, testFailures.getFailure()));
+            testFailures.run(failures::throwIfAny);
+            if (failures.getFailure() != null) {
+                BaseTest.CURRENT_TEST_RESULT.set(TestResult.FAILURE);
+                failures.run(() -> PluginExecutionEngine.afterTestFailed(FailureCollector.asException(testFailures.getFailure())));
+            }
+        } finally {
+            BaseTest.CURRENT_TEST_RESULT.remove();
+            BaseTest.CURRENT_TEST_TIME_RECORD.remove();
+        }
+        failures.throwIfAny();
+    }
 
-            PluginExecutionEngine.postAfterTest(BaseTest.CURRENT_TEST_RESULT.get(), BaseTest.CURRENT_TEST_TIME_RECORD.get(), extensionContext.getTestMethod().get(), null);
-        } catch (Exception e) {
-            PluginExecutionEngine.afterTestFailed(e);
+    private void updateResult(ExtensionContext context) {
+        if (context.getExecutionException().isPresent()) {
+            BaseTest.CURRENT_TEST_RESULT.set(TestResult.FAILURE);
         }
     }
 }

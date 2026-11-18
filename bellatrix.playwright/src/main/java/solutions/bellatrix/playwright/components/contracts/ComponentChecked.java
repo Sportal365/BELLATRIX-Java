@@ -23,6 +23,14 @@ public interface ComponentChecked extends Component {
         ComponentValidator.defaultValidateAttributeTrue((WebComponent)this, this::isChecked, "checked");
     }
 
+    default void validateIsChecked(boolean checked) {
+        if (checked) {
+            validateIsChecked();
+        } else {
+            validateIsUnchecked();
+        }
+    }
+
     default void validateIsUnchecked() {
         ComponentValidator.defaultValidateAttributeTrue((WebComponent)this, () -> !isChecked(), "unchecked");
     }

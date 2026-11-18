@@ -19,6 +19,10 @@ import com.microsoft.playwright.Page;
 import java.util.function.Function;
 
 public class AltTextOptions extends Options<Page.GetByAltTextOptions, Locator.GetByAltTextOptions> {
+    public AltTextOptions() {
+        super(new Page.GetByAltTextOptions(), new Locator.GetByAltTextOptions());
+    }
+
     private void setAbsolute(Function<Page.GetByAltTextOptions, Page.GetByAltTextOptions> method) {
         invokeAbsolute(method);
     }

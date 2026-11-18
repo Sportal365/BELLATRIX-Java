@@ -16,56 +16,38 @@ package solutions.bellatrix.playwright.findstrategies.utils;
 import solutions.bellatrix.playwright.components.common.webelement.WebElement;
 
 import java.lang.reflect.Method;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Arrays;
 
-public class LocatorUtilities {
+public final class LocatorUtilities {
+    private LocatorUtilities() {
+    }
 
-    public static <T> Method getGetMethod(Class<T> type, By by, Object... args) {
-        List<Class<?>> parameterTypesList = new ArrayList<>();
+    public static Method getGetMethod(Class<?> type, By by, Object... args) {
+        var name = switch (by) {
+            case ALT_TEXT -> "getByAltText";
+            case LABEL -> "getByLabel";
+            case PLACEHOLDER -> "getByPlaceholder";
+            case ROLE -> "getByRole";
+            case TEST_ID -> "getByTestId";
+            case TEXT -> "getByText";
+            case TITLE -> "getByTitle";
+            case FRAME_LOCATOR, LOCATOR -> type == WebElement.class ? "locate" : "locator";
+        };
+        return Arrays.stream(type.getMethods())
+                .filter(method -> method.getName().equals(name) && accepts(method.getParameterTypes(), args))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Unsupported locator arguments for " + type.getSimpleName() + "." + name));
+    }
 
-        for (Object arg : args) {
-            if (arg != null) {
-                parameterTypesList.add(arg.getClass());
+    private static boolean accepts(Class<?>[] types, Object[] args) {
+        if (types.length != args.length) {
+            return false;
+        }
+        for (int index = 0; index < types.length; index++) {
+            if (args[index] == null ? types[index].isPrimitive() : !types[index].isInstance(args[index])) {
+                return false;
             }
         }
-
-        Class<?>[] parameterTypes = new Class[parameterTypesList.size()];
-        for (int i = 0 ; i < parameterTypesList.size(); i++) {
-            parameterTypes[i] = parameterTypesList.get(i);
-        }
-
-        try {
-            switch (by) {
-                case ALT_TEXT -> {
-                    return type.getDeclaredMethod("getByAltText", parameterTypes);
-                }
-                case LABEL -> {
-                    return type.getDeclaredMethod("getByLabel", parameterTypes);
-                }
-                case PLACEHOLDER -> {
-                    return type.getDeclaredMethod("getByPlaceholder", parameterTypes);
-                }
-                case ROLE -> {
-                    return type.getDeclaredMethod("getByRole", parameterTypes);
-                }
-                case TEST_ID -> {
-                    return type.getDeclaredMethod("getByTestId", parameterTypes);
-                }
-                case TEXT -> {
-                    return type.getDeclaredMethod("getByText", parameterTypes);
-                }
-                case TITLE -> {
-                    return type.getDeclaredMethod("getByTitle", parameterTypes);
-                }
-                case FRAME_LOCATOR, LOCATOR -> {
-                    if (type == WebElement.class)  return type.getDeclaredMethod("locate", parameterTypes);
-                    else return type.getDeclaredMethod("locator", parameterTypes);
-                }
-                default -> throw new IllegalStateException("Unexpected value: " + by);
-            }
-        } catch (NoSuchMethodException|SecurityException|IllegalStateException ex) {
-            throw new RuntimeException(ex);
-        }
+        return true;
     }
 }

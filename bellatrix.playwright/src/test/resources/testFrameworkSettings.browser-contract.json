@@ -1,0 +1,38 @@
+{
+  "webSettings": {
+    "executionType": "local",
+    "defaultBrowser": "chromium_headless",
+    "defaultLifeCycle": "reuse_if_started",
+    "defaultBrowserWidth": 800,
+    "defaultBrowserHeight": 600,
+    "headless": true,
+    "automaticallyScrollToVisible": false,
+    "waitUntilReadyOnElementFound": false,
+    "shouldHighlightElements": false,
+    "shouldCaptureHttpTraffic": true,
+    "toastNotificationBddLogging": false,
+    "screenshotsOnFailEnabled": true,
+    "screenshotsSaveLocation": "target/browser-contract/screenshots",
+    "videosOnFailEnabled": false,
+    "timeoutSettings": {
+      "pageLoadTimeout": 5,
+      "elementWaitTimeout": 3,
+      "validationsTimeout": 3,
+      "elementToBeClickableTimeout": 1,
+      "elementToBeVisibleTimeout": 3,
+      "elementNotToBeVisibleTimeout": 3,
+      "elementToExistTimeout": 3,
+      "elementToNotExistTimeout": 3,
+      "elementToHaveContentTimeout": 3,
+      "waitForPartialUrl": 3,
+      "sleepInterval": 1
+    },
+    "contextSettings": {
+      "shouldSetContextSettings": true,
+      "acceptDownloads": true,
+      "jsEnabled": true,
+      "locale": "en-GB",
+      "timezoneId": "Europe/Sofia"
+    }
+  }
+}

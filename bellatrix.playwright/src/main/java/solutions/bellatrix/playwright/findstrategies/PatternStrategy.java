@@ -16,10 +16,15 @@ package solutions.bellatrix.playwright.findstrategies;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.util.Objects;
 import java.util.regex.Pattern;
 
 @Getter @Setter
 public abstract class PatternStrategy extends FindStrategy {
     protected String text;
     protected Pattern pattern;
+
+    protected Object searchValue() {
+        return text == null ? Objects.requireNonNull(pattern, "A locator text or pattern is required") : text;
+    }
 }

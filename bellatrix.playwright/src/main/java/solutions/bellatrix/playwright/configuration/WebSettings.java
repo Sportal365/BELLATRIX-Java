@@ -23,8 +23,11 @@ public class WebSettings {
     private String baseUrl;
     private String executionType;
     private String defaultLifeCycle;
+    private String contextScope;
     private String defaultBrowser;
-    private List<GridSettings> gridSettings;
+    private int defaultBrowserWidth;
+    private int defaultBrowserHeight;
+    private Boolean headless;
     private int artificialDelayBeforeAction;
     private TimeoutSettings timeoutSettings;
     private ContextSettings contextSettings;
@@ -34,6 +37,7 @@ public class WebSettings {
     private Boolean waitForAngular;
     private Boolean shouldHighlightElements;
     private Boolean shouldCaptureHttpTraffic;
+    private List<String> consoleErrorsWhitelist;
     private Boolean toastNotificationBddLogging;
     private long notificationToastTimeout;
 

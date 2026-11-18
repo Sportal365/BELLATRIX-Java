@@ -25,6 +25,7 @@ public class Log {
             info = String.format(format, args);
         }
 
+        info = SecretMasker.mask(info);
         LOGGED_ENTRY.broadcast(new LoggerActionEventArgs(info));
         LOGGED_INFO.broadcast(new LoggerActionEventArgs(info));
         System.out.println(info);
@@ -36,6 +37,7 @@ public class Log {
             error = String.format(format, args);
         }
 
+        error = SecretMasker.mask(error);
         LOGGED_ENTRY.broadcast(new LoggerActionEventArgs(error));
         LOGGED_ERROR.broadcast(new LoggerActionEventArgs(error));
         System.err.println(error);

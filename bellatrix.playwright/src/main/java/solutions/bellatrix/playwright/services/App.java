@@ -19,8 +19,6 @@ import solutions.bellatrix.playwright.pages.WebPage;
 import solutions.bellatrix.playwright.pages.WebSection;
 
 public class App implements AutoCloseable {
-    private boolean disposed = false;
-
     public NavigationService navigate() {
         return SingletonFactory.getInstance(NavigationService.class);
     }
@@ -35,10 +33,6 @@ public class App implements AutoCloseable {
 
     public ComponentCreateService create() {
         return SingletonFactory.getInstance(ComponentCreateService.class);
-    }
-
-    public DialogService dialogs() {
-        return SingletonFactory.getInstance(DialogService.class);
     }
 
     public JavaScriptService script() {
@@ -76,12 +70,6 @@ public class App implements AutoCloseable {
 
     @Override
     public void close() {
-        if (disposed) {
-            return;
-        }
-
         PlaywrightService.close();
-
-        disposed = true;
     }
 }

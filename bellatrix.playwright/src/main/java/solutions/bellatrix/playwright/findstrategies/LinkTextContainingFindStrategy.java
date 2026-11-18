@@ -15,6 +15,6 @@ package solutions.bellatrix.playwright.findstrategies;
 
 public class LinkTextContainingFindStrategy extends XpathFindStrategy {
     public LinkTextContainingFindStrategy(String linkText) {
-        super(String.format("//a[contains(text(), '%s')]", linkText));
+        super("//a[contains(normalize-space(.), " + literal(linkText) + ")]");
     }
 }

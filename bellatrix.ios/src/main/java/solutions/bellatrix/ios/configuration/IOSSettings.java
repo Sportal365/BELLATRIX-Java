@@ -38,6 +38,7 @@ public class IOSSettings {
     @Getter @Setter private String defaultIOSVersion;
     @Getter @Setter private Boolean downloadDemoApps;
     @Getter @Setter private String serviceUrl;
+    @Getter @Setter private String deviceIdentifier;
 
     @Getter @Setter private List<GridSettings> gridSettings;
 
@@ -50,4 +51,6 @@ public class IOSSettings {
 
     @Getter @Setter private Boolean videosOnFailEnabled;
     @Getter @Setter private String videosSaveLocation;
+
+    @Getter @Setter private Boolean allowImageFindStrategies;
 }

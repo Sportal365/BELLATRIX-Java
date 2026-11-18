@@ -14,7 +14,6 @@
 package solutions.bellatrix.playwright.components;
 
 import solutions.bellatrix.core.plugins.EventListener;
-import solutions.bellatrix.core.utilities.DebugInformation;
 import solutions.bellatrix.playwright.components.common.ComponentActionEventArgs;
 import solutions.bellatrix.playwright.components.contracts.ComponentDisabled;
 import solutions.bellatrix.playwright.components.contracts.ComponentReadonly;
@@ -28,22 +27,11 @@ public class Select extends WebComponent implements ComponentDisabled, Component
     public final static EventListener<ComponentActionEventArgs> SELECTED = new EventListener<>();
 
     public Option getSelected() {
-        String optionValue = (String)this.wrappedElement.evaluate("selectElement => {" +
-                "    const selectedOption = selectElement.options[selectElement.selectedIndex];" +
-                "    return selectedOption.getAttribute('value');" +
-                "}"
-        );
-
-        return this.create().byXpath(Option.class, String.format("//option[@value='%s']", optionValue));
+        return create().byCss(Option.class, "option:checked");
     }
 
     public List<Option> getAllOptions() {
-        try {
-            return this.create().allByXpath(Option.class, "//option");
-        } catch (Exception ex) {
-            DebugInformation.printStackTrace(ex);
-            return null;
-        }
+        return create().allByTag(Option.class, "option");
     }
 
     public void selectByText(String text) {

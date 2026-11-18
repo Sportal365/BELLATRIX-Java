@@ -19,6 +19,10 @@ import com.microsoft.playwright.Page;
 import java.util.function.Function;
 
 public class PlaceholderOptions extends Options<Page.GetByPlaceholderOptions, Locator.GetByPlaceholderOptions> {
+    public PlaceholderOptions() {
+        super(new Page.GetByPlaceholderOptions(), new Locator.GetByPlaceholderOptions());
+    }
+
     private void setAbsolute(Function<Page.GetByPlaceholderOptions, Page.GetByPlaceholderOptions> method) {
         invokeAbsolute(method);
     }

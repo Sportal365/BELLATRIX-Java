@@ -23,13 +23,7 @@ public class TextArea extends WebComponent implements ComponentText, ComponentVa
 
     @Override
     public String getText() {
-        String text = defaultGetText();
-
-        if (text.isEmpty()) {
-            return defaultGetValue();
-        }
-
-        return text;
+        return defaultGetEditableText();
     }
 
     public void setText(String value) {

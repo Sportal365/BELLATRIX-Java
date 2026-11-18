@@ -25,6 +25,11 @@
 
     <dependencies>
         <dependency>
+            <groupId>io.appium</groupId>
+            <artifactId>java-client</artifactId>
+            <version>9.4.0</version>
+        </dependency>
+        <dependency>
             <groupId>solutions.bellatrix</groupId>
             <artifactId>bellatrix.core</artifactId>
             <version>1.0</version>
@@ -51,6 +56,12 @@
         <dependency>
             <groupId>solutions.bellatrix</groupId>
             <artifactId>bellatrix.web</artifactId>
+            <version>1.0</version>
+            <scope>compile</scope>
+        </dependency>
+        <dependency>
+            <groupId>solutions.bellatrix</groupId>
+            <artifactId>bellatrix.plugins.opencv</artifactId>
             <version>1.0</version>
             <scope>compile</scope>
         </dependency>

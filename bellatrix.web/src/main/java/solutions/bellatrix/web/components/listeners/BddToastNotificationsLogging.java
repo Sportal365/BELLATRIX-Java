@@ -20,12 +20,12 @@ import solutions.bellatrix.web.configuration.WebSettings;
 import solutions.bellatrix.web.services.BrowserService;
 import solutions.bellatrix.web.validations.ComponentValidator;
 
-public class BddToastNotificationsLogging extends Listener {
-    private static boolean isBddLoggingTurnedOn = false;
+import java.util.Objects;
 
+public class BddToastNotificationsLogging extends Listener {
     @Override
     public void addListener() {
-        isBddLoggingTurnedOn = ConfigurationService.get(WebSettings.class).getToastNotificationBddLogging();
+        var isBddLoggingTurnedOn = Objects.requireNonNullElse(ConfigurationService.get(WebSettings.class).getToastNotificationBddLogging(), false);
         if (isBddLoggingTurnedOn) {
             Anchor.CLICKING.addListener((x) -> new BrowserService().injectInfoNotificationToast("clicking %s", x.getComponent().getComponentName()));
             Button.CLICKING.addListener((x) -> new BrowserService().injectInfoNotificationToast("clicking %s", x.getComponent().getComponentName()));
@@ -55,7 +55,8 @@ public class BddToastNotificationsLogging extends Listener {
 //            WebComponent.SCROLLING_TO_VISIBLE.addListener((x) -> new BrowserService().injectInfoNotificationToast("scrolling to %s", x.getComponent().getComponentName()));
             WebComponent.SETTING_ATTRIBUTE.addListener((x) -> new BrowserService().injectInfoNotificationToast("setting %s to '%s' in %s", x.getActionValue(), x.getMessage(), x.getComponent().getComponentName()));
             ComponentValidator.VALIDATING_ATTRIBUTE.addListener((x) -> new BrowserService().injectInfoNotificationToast(x.getMessage()));
-            isBddLoggingTurnedOn = true;
+            ActionImage.CLICKING.addListener((x) -> new BrowserService().injectInfoNotificationToast("clicking %s", x.getMessage()));
+            ActionImage.HOVERED.addListener((x) -> new BrowserService().injectInfoNotificationToast("hovering %s", x.getMessage()));
         }
     }
 }

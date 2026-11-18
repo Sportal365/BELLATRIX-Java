@@ -28,6 +28,7 @@ import solutions.bellatrix.core.plugins.EventListener;
 import solutions.bellatrix.core.utilities.DebugInformation;
 import solutions.bellatrix.core.utilities.InstanceFactory;
 import solutions.bellatrix.core.utilities.Log;
+import solutions.bellatrix.plugins.opencv.Base64Encodable;
 import solutions.bellatrix.web.components.contracts.Component;
 import solutions.bellatrix.web.components.contracts.ComponentStyle;
 import solutions.bellatrix.web.components.contracts.ComponentVisible;
@@ -117,10 +118,20 @@ public class WebComponent extends LayoutComponentValidationsBuilder implements C
 
     public WebElement getWrappedElement() {
         try {
-            wrappedElement.isDisplayed(); // checking if getting property throws exception
-            return wrappedElement;
-        } catch (StaleElementReferenceException | NoSuchElementException | NullPointerException | ScriptTimeoutException ex ) {
+            if(wrappedElement != null) {
+                wrappedElement.isDisplayed(); // checking if getting property throws exception
+                return wrappedElement;
+            } else {
+                return findElement();
+            }
+        } catch (ElementNotInteractableException ex ) {
+            scrollToVisible();
             return findElement();
+        } catch (StaleElementReferenceException ex ) {
+            return findElement();
+        } catch (WebDriverException ex ) {
+            toExist().waitToBe();
+            return wrappedElement;
         }
     }
 
@@ -343,6 +354,10 @@ public class WebComponent extends LayoutComponentValidationsBuilder implements C
         return create(componentClass, new IdFindStrategy(id));
     }
 
+    public <TComponent extends WebComponent> TComponent createByImage(Class<TComponent> componentClass, Base64Encodable encodedImage) {
+        return create(componentClass, new ImageBase64FindStrategy(encodedImage));
+    }
+
     public <TComponent extends WebComponent> TComponent createByAttributeContaining(Class<TComponent> componentClass, String attributeName, String value) {
         return create(componentClass, new AttributeContainingWithFindStrategy(attributeName, value));
     }
@@ -401,6 +416,10 @@ public class WebComponent extends LayoutComponentValidationsBuilder implements C
 
     public <TComponent extends WebComponent> List<TComponent> createAllById(Class<TComponent> componentClass, String id) {
         return createAll(componentClass, new IdFindStrategy(id));
+    }
+
+    public <TComponent extends WebComponent> List<TComponent> createAllByImage(Class<TComponent> componentClass, Base64Encodable encodedImage) {
+        return createAll(componentClass, new ImageBase64FindStrategy(encodedImage));
     }
 
     public <TComponent extends WebComponent> List<TComponent> createAllByAttributeContaining(Class<TComponent> componentClass, String attributeName, String value) {
@@ -783,7 +802,7 @@ public class WebComponent extends LayoutComponentValidationsBuilder implements C
         TComponent component;
 
         if (inShadowContext()) {
-            component = ShadowDomService.createInShadowContext(this, componentClass, findStrategy);
+            component = ShadowDomService.createInShadowContext(componentClass, this, findStrategy);
         } else {
             component = InstanceFactory.create(componentClass);
             component.setFindStrategy(findStrategy);
@@ -802,7 +821,7 @@ public class WebComponent extends LayoutComponentValidationsBuilder implements C
         List<TComponent> componentList = new ArrayList<>();
 
         if (inShadowContext()) {
-            componentList = ShadowDomService.createAllInShadowContext(this, componentClass, findStrategy);
+            componentList = ShadowDomService.createAllInShadowContext(componentClass, this, findStrategy);
         } else {
             var nativeElements = wrappedElement.findElements(findStrategy.convert());
 
@@ -819,19 +838,19 @@ public class WebComponent extends LayoutComponentValidationsBuilder implements C
         return componentList;
     }
 
-    private boolean inShadowContext() {
+    public boolean inShadowContext() {
         var component = this;
 
-        while (component != null) {
-            if (component instanceof ShadowRoot) return true;
+        while (component != null && component.getParentComponent() != null) {
             component = component.getParentComponent();
+            if (component instanceof ShadowRoot) return true;
         }
 
         return false;
     }
 
     public WebElement findElement() {
-        if (waitStrategies.size() == 0) {
+        if (waitStrategies.isEmpty()) {
             waitStrategies.add(Wait.to().exist(webSettings.getTimeoutSettings().getElementWaitTimeout(), webSettings.getTimeoutSettings().getSleepInterval()));
         }
 
@@ -880,7 +899,8 @@ public class WebComponent extends LayoutComponentValidationsBuilder implements C
         try {
             wait.until(x -> tryClick());
         } catch (TimeoutException e) {
-            toBeVisible().toBeClickable().findElement().click();
+            Log.info("Click has timed out.  Trying with JS click()...");
+            javaScriptService.execute("arguments[0].click()", findElement());
         }
     }
 
@@ -889,9 +909,15 @@ public class WebComponent extends LayoutComponentValidationsBuilder implements C
             toBeVisible().toBeClickable().findElement().click();
             return true;
         } catch (ElementNotInteractableException e) {
+            Log.error("ElementNotInteractableException found - retrying with scroll.. ");
+            scrollToVisible();
+            return false;
+        } catch (StaleElementReferenceException e) {
+            Log.error("StaleElementReference Exception found - retrying with a new Find... ");
+            findElement();
             return false;
         } catch (WebDriverException e) {
-            toBeVisible().toBeClickable().waitToBe();
+            Log.error("WebDriverException found - trying again... ");
             return false;
         }
     }
@@ -1055,10 +1081,16 @@ public class WebComponent extends LayoutComponentValidationsBuilder implements C
     }
 
     protected String defaultGetInnerHtmlAttribute() {
-        try {
-            return Optional.ofNullable(getAttribute("innerHTML")).orElse("");
-        } catch (StaleElementReferenceException e) {
-            return Optional.ofNullable(findElement().getAttribute("innerHTML")).orElse("");
+        if (this instanceof ShadowRoot) {
+            return ShadowDomService.getShadowHtml(this, true);
+        } else if (this.inShadowContext()) {
+            return ShadowDomService.getShadowHtml(this, false);
+        } else {
+            try {
+                return Optional.ofNullable(getAttribute("innerHTML")).orElse("");
+            } catch (StaleElementReferenceException e) {
+                return Optional.ofNullable(findElement().getAttribute("innerHTML")).orElse("");
+            }
         }
     }
 
@@ -1270,6 +1302,9 @@ public class WebComponent extends LayoutComponentValidationsBuilder implements C
     public boolean isVisible() {
         try {
             return getWrappedElement().isDisplayed();
+        } catch (StaleElementReferenceException e) {
+            wrappedElement = findElement();
+            return false;
         } catch (NotFoundException e) {
             return false;
         }

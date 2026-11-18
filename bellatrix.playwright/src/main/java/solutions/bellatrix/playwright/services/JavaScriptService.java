@@ -14,46 +14,38 @@
 package solutions.bellatrix.playwright.services;
 
 import com.microsoft.playwright.Locator;
-import solutions.bellatrix.core.utilities.DebugInformation;
 import solutions.bellatrix.core.utilities.SingletonFactory;
 import solutions.bellatrix.playwright.components.Frame;
 import solutions.bellatrix.playwright.components.WebComponent;
-import solutions.bellatrix.playwright.utilities.functionalinterfaces.Evaluable;
 
-
-@SuppressWarnings("resource")
 public class JavaScriptService extends WebService {
-    public Object execute(String script) {
-        return performEvaluation(() -> wrappedBrowser().getCurrentPage().evaluate(script));
-
+    /**
+     * Evaluates the script on the current page with the arguments passed as one array, as upstream Bellatrix does.
+     * Failures are thrown, not swallowed.
+     */
+    @SuppressWarnings("unchecked")
+    public <T> T genericExecute(String script, Object... args) {
+        return (T) wrappedBrowser().getCurrentPage().evaluate(script, new Object[] { args });
     }
 
-    public String execute(String frameName, String script) {
-        return (String)execute(script, SingletonFactory.getInstance(ComponentCreateService.class).byName(Frame.class, frameName));
+    public Object execute(String expression) {
+        return wrappedBrowser().getCurrentPage().evaluate(expression);
     }
 
-    public String execute(Frame frame, String script) {
-        return (String)execute(script, frame);
+    public Object execute(Frame frame, String expression) {
+        return frame.frameLocator().locator("html").evaluate(expression);
     }
 
-    public String execute(String script, Object... args) {
-        return (String) performEvaluation(() -> wrappedBrowser().getCurrentPage().evaluate(script, args));
+    public Object executeInFrame(String frameName, String expression) {
+        var frame = SingletonFactory.getInstance(ComponentCreateService.class).byName(Frame.class, frameName);
+        return execute(frame, expression);
     }
 
-    public <TComponent extends WebComponent> String execute(String script, TComponent component) {
-        return execute(script, component.getWrappedElement());
+    public Object execute(String expression, WebComponent component) {
+        return component.evaluate(expression);
     }
 
-    public String execute(String script, Locator nativeLocator) {
-        return (String) performEvaluation(() -> nativeLocator.evaluate(script));
-    }
-
-    private Object performEvaluation(Evaluable method) {
-        try {
-            return method.evaluate();
-        } catch (Exception ex) {
-            DebugInformation.printStackTrace(ex);
-            return "";
-        }
+    public Object execute(String expression, Locator locator) {
+        return locator.evaluate(expression);
     }
 }

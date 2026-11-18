@@ -18,6 +18,7 @@ import com.microsoft.playwright.options.AriaRole;
 import com.microsoft.playwright.options.BoundingBox;
 import com.microsoft.playwright.options.FilePayload;
 import com.microsoft.playwright.options.SelectOption;
+import lombok.AccessLevel;
 import lombok.Getter;
 import solutions.bellatrix.playwright.components.common.webelement.options.*;
 
@@ -31,11 +32,23 @@ import java.util.regex.Pattern;
  */
 @Getter
 public class WebElement {
+    /**
+     * Wraps elements already found (for example by image). first(), nth(), last() and all() then return these
+     * elements instead of querying the page again.
+     */
+    public WebElement(List<Locator> locators) {
+        wrappedLocators = List.copyOf(locators);
+        wrappedLocator = wrappedLocators.get(0);
+    }
+
     public WebElement(Locator locator) {
         wrappedLocator = locator;
+        wrappedLocators = null;
     }
 
     private final Locator wrappedLocator;
+    @Getter(AccessLevel.NONE)
+    private final List<Locator> wrappedLocators;
 
     public WebElement getByAltText(String text, GetByAltTextOptions options) {
         return new WebElement(wrappedLocator.getByAltText(text, options.convertTo(Locator.GetByAltTextOptions.class)));
@@ -93,6 +106,14 @@ public class WebElement {
         return new WebElement(wrappedLocator.getByRole(role));
     }
 
+    public WebElement getByTestId(String testId) {
+        return new WebElement(wrappedLocator.getByTestId(testId));
+    }
+
+    public WebElement getByTestId(Pattern testId) {
+        return new WebElement(wrappedLocator.getByTestId(testId));
+    }
+
     public WebElement getByText(String text, GetByTextOptions options) {
         return new WebElement(wrappedLocator.getByText(text, options.convertTo(Locator.GetByTextOptions.class)));
     }
@@ -143,8 +164,7 @@ public class WebElement {
 
     public List<WebElement> all() {
         List<WebElement> elements = new ArrayList<>();
-        List<Locator> locators = wrappedLocator.all();
-        for (Locator locator : locators) {
+        for (Locator locator : wrappedLocators != null ? wrappedLocators : wrappedLocator.all()) {
             elements.add(new WebElement(locator));
         }
 
@@ -256,12 +276,21 @@ public class WebElement {
         return wrappedLocator.evaluate(expression);
     }
 
+    public String getCssValue(String propertyName) {
+        var value = (String) wrappedLocator.evaluate(
+                "(element, property) => getComputedStyle(element).getPropertyValue(property)", propertyName);
+        if (propertyName.endsWith("color") && value.startsWith("rgb(")) {
+            return "rgba(" + value.substring(4, value.length() - 1) + ", 1)";
+        }
+        return value;
+    }
+
     public Object evaluateAll(String expression, Object arg) {
         return wrappedLocator.evaluate(expression, arg);
     }
 
     public Object evaluateAll(String expression) {
-        return wrappedLocator.evaluate(expression);
+        return wrappedLocator.evaluateAll(expression);
     }
 
     public JSHandle evaluateHandle(String expression, Object arg, Locator.EvaluateHandleOptions options) {
@@ -294,7 +323,7 @@ public class WebElement {
     }
 
     public WebElement first() {
-        return new WebElement(wrappedLocator.first());
+        return new WebElement(wrappedLocators != null ? wrappedLocators.get(0) : wrappedLocator.first());
     }
 
     public void focus(Locator.FocusOptions options) {
@@ -399,11 +428,11 @@ public class WebElement {
     }
 
     public WebElement last() {
-        return new WebElement(wrappedLocator.last());
+        return new WebElement(wrappedLocators != null ? wrappedLocators.get(wrappedLocators.size() - 1) : wrappedLocator.last());
     }
 
     public WebElement nth(int index) {
-        return new WebElement(wrappedLocator.nth(index));
+        return new WebElement(wrappedLocators != null ? wrappedLocators.get(index) : wrappedLocator.nth(index));
     }
 
     public WebElement or(WebElement webElement) {

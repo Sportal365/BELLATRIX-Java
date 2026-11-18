@@ -13,6 +13,8 @@
 
 package solutions.bellatrix.playwright.services;
 
+import com.microsoft.playwright.FrameLocator;
+import com.microsoft.playwright.Locator;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.options.AriaRole;
 import solutions.bellatrix.core.utilities.InstanceFactory;
@@ -22,6 +24,7 @@ import solutions.bellatrix.playwright.findstrategies.*;
 import solutions.bellatrix.playwright.findstrategies.options.*;
 import solutions.bellatrix.playwright.components.common.webelement.FrameElement;
 import solutions.bellatrix.playwright.components.common.webelement.WebElement;
+import solutions.bellatrix.plugins.opencv.Base64Encodable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -30,6 +33,24 @@ import java.util.regex.Pattern;
 
 @SuppressWarnings("DataFlowIssue")
 public class ComponentCreateService extends WebService {
+    private final WebElement scope;
+
+    public ComponentCreateService() {
+        this(null);
+    }
+
+    private ComponentCreateService(WebElement scope) {
+        this.scope = scope;
+    }
+
+    public ComponentCreateService fromFrame(FrameLocator frame) {
+        return new ComponentCreateService(new FrameElement(frame.owner()));
+    }
+
+    public <TComponent extends WebComponent> TComponent fromLocator(Class<TComponent> componentClass, Locator locator) {
+        return createInstance(componentClass, null, new WebElement(locator));
+    }
+
     public <TComponent extends WebComponent> TComponent byName(Class<TComponent> componentClass, String name) {
         return by(componentClass, new NameFindStrategy(name));
     }
@@ -166,6 +187,14 @@ public class ComponentCreateService extends WebService {
         return allBy(componentClass, new IdFindStrategy(value));
     }
 
+    public <TComponent extends WebComponent> TComponent byImage(Class<TComponent> componentClass, Base64Encodable encodedImage) {
+        return by(componentClass, new ImageBase64FindStrategy(encodedImage));
+    }
+
+    public <TComponent extends WebComponent> List<TComponent> allByImage(Class<TComponent> componentClass, Base64Encodable encodedImage) {
+        return allBy(componentClass, new ImageBase64FindStrategy(encodedImage));
+    }
+
     public <TComponent extends WebComponent> TComponent byClass(Class<TComponent> componentClass, String value) {
         return by(componentClass, new ClassFindStrategy(value));
     }
@@ -284,6 +313,14 @@ public class ComponentCreateService extends WebService {
         return allBy(componentClass, new XpathFindStrategy(xpath));
     }
 
+    public <TComponent extends WebComponent> TComponent byXPath(Class<TComponent> componentClass, String xpath) {
+        return byXpath(componentClass, xpath);
+    }
+
+    public <TComponent extends WebComponent> List<TComponent> allByXPath(Class<TComponent> componentClass, String xpath) {
+        return allByXpath(componentClass, xpath);
+    }
+
     public <TComponent extends WebComponent> TComponent byCss(Class<TComponent> componentClass, String css) {
         return by(componentClass, new CssFindStrategy(css));
     }
@@ -293,17 +330,11 @@ public class ComponentCreateService extends WebService {
     }
 
     public <TComponent extends WebComponent, TFindStrategy extends FindStrategy> TComponent by(Class<TComponent> componentClass, TFindStrategy findStrategy) {
-        wrappedBrowser().getCurrentPage().waitForLoadState();
-
-        var element = findStrategy.convert(wrappedBrowser().getCurrentPage()).first();
-
-        return createInstance(componentClass, findStrategy, element);
+        return createInstance(componentClass, findStrategy, locate(findStrategy).first());
     }
 
     public <TComponent extends WebComponent, TFindStrategy extends FindStrategy> List<TComponent> allBy(Class<TComponent> componentClass, TFindStrategy findStrategy) {
-        wrappedBrowser().getCurrentPage().waitForLoadState();
-
-        var elements = findStrategy.convert(wrappedBrowser().getCurrentPage()).all();
+        var elements = locate(findStrategy).all();
         List<TComponent> componentList = new ArrayList<>();
         for (var element : elements) {
             var component = createInstance(componentClass, findStrategy, element);
@@ -314,18 +345,26 @@ public class ComponentCreateService extends WebService {
         return componentList;
     }
 
+    protected WebElement locate(FindStrategy findStrategy) {
+        return scope == null ? findStrategy.convert(wrappedBrowser().getCurrentPage()) : findStrategy.convert(scope);
+    }
+
     protected <TComponent extends WebComponent, TFindStrategy extends FindStrategy> TComponent createInstance(Class<TComponent> componentClass, TFindStrategy findStrategy, WebElement element) {
         var component = InstanceFactory.create(componentClass);
 
-        if (componentClass == Frame.class && element.getClass() != FrameElement.class) {
+        if (Frame.class.isAssignableFrom(componentClass) && !(element instanceof FrameElement)) {
             component.setWrappedElement(new FrameElement(element));
-        } else if (componentClass != Frame.class && element.getClass() == FrameElement.class) {
+        } else if (!Frame.class.isAssignableFrom(componentClass) && element instanceof FrameElement) {
             component.setWrappedElement(new WebElement(element.getWrappedLocator()));
         } else {
             component.setWrappedElement(element);
         }
 
-        component.setFindStrategy(findStrategy);
+        if (findStrategy != null) {
+            var strategy = (FindStrategy) findStrategy.clone();
+            strategy.setWebElement(element);
+            component.setFindStrategy(strategy);
+        }
 
         return component;
     }

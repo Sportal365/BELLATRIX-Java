@@ -16,15 +16,17 @@ package solutions.bellatrix.playwright.findstrategies;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.options.AriaRole;
 import lombok.Getter;
+import solutions.bellatrix.core.utilities.ConverterService;
 import solutions.bellatrix.playwright.components.common.webelement.WebElement;
+import solutions.bellatrix.playwright.components.common.webelement.options.GetByRoleOptions;
 import solutions.bellatrix.playwright.findstrategies.options.RoleOptions;
-import solutions.bellatrix.playwright.findstrategies.utils.By;
+import solutions.bellatrix.playwright.infrastructure.PlaywrightService;
 
 @Getter
 public class AriaRoleFindStrategy extends FindStrategy {
     private final AriaRole role;
     public AriaRoleFindStrategy(AriaRole role) {
-        this.role = role;
+        this(role, RoleOptions.createAbsolute(null));
     }
     public AriaRoleFindStrategy(AriaRole role, RoleOptions options) {
         this.role = role;
@@ -34,12 +36,17 @@ public class AriaRoleFindStrategy extends FindStrategy {
 
     @Override
     public WebElement convert(Page page) {
-        return get(page, By.ROLE, role, ((RoleOptions)options).absolute());
+        webElement = new WebElement(page.getByRole(role, ((RoleOptions) options).absolute()));
+        return webElement;
     }
 
     @Override
-    public WebElement convert(WebElement webElement) {
-        return get(webElement, By.ROLE, role, ((RoleOptions)options).absolute());
-
+    public WebElement convert(WebElement locator) {
+        if (locator == null) {
+            return convert(PlaywrightService.wrappedBrowser().getCurrentPage());
+        }
+        var relativeOptions = ConverterService.convertToClass(((RoleOptions) options).relative(), GetByRoleOptions.class);
+        webElement = locator.getByRole(role, relativeOptions);
+        return webElement;
     }
 }

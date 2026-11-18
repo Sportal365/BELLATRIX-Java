@@ -14,16 +14,11 @@
 package solutions.bellatrix.playwright.components.common.create;
 
 import solutions.bellatrix.core.plugins.EventListener;
-import solutions.bellatrix.core.utilities.HtmlService;
-import solutions.bellatrix.playwright.components.shadowdom.ShadowDomService;
-import solutions.bellatrix.playwright.components.shadowdom.ShadowRoot;
 import solutions.bellatrix.playwright.components.WebComponent;
 import solutions.bellatrix.playwright.components.common.ComponentActionEventArgs;
 import solutions.bellatrix.playwright.components.common.webelement.WebElement;
 import solutions.bellatrix.playwright.components.contracts.Component;
 import solutions.bellatrix.playwright.findstrategies.FindStrategy;
-import solutions.bellatrix.playwright.findstrategies.ShadowXpathFindStrategy;
-import solutions.bellatrix.playwright.findstrategies.XpathFindStrategy;
 import solutions.bellatrix.playwright.services.ComponentCreateService;
 
 import java.util.ArrayList;
@@ -45,16 +40,7 @@ public class RelativeCreateService extends ComponentCreateService {
     public <TComponent extends WebComponent, TFindStrategy extends FindStrategy> TComponent by(Class<TComponent> componentClass, TFindStrategy findStrategy) {
         CREATING.broadcast(new ComponentActionEventArgs((WebComponent)baseComponent));
 
-        wrappedBrowser().getCurrentPage().waitForLoadState();
-
-        TComponent newComponent;
-
-        if (inShadowContext()) {
-            newComponent = ShadowDomService.createInShadowContext((WebComponent)baseComponent, componentClass, findStrategy);
-        } else {
-            newComponent = createFromParentComponent(componentClass, findStrategy);
-        }
-
+        var newComponent = createFromParentComponent(componentClass, findStrategy, locate(findStrategy).first());
         CREATED.broadcast(new ComponentActionEventArgs((WebComponent)baseComponent));
 
         return newComponent;
@@ -64,20 +50,9 @@ public class RelativeCreateService extends ComponentCreateService {
     public <TComponent extends WebComponent, TFindStrategy extends FindStrategy> List<TComponent> allBy(Class<TComponent> componentClass, TFindStrategy findStrategy) {
         CREATING.broadcast(new ComponentActionEventArgs((WebComponent)baseComponent));
 
-        wrappedBrowser().getCurrentPage().waitForLoadState();
-
         List<TComponent> componentList = new ArrayList<>();
-
-        if (inShadowContext()) {
-            componentList = ShadowDomService.createAllInShadowContext((WebComponent)baseComponent, componentClass, findStrategy);
-        } else {
-            var elements = findStrategy.convert(baseComponent.getWrappedElement()).all();
-
-            for (var element : elements) {
-                var component = createFromParentComponent(componentClass, findStrategy, element);
-
-                componentList.add(component);
-            }
+        for (var element : locate(findStrategy).all()) {
+            componentList.add(createFromParentComponent(componentClass, findStrategy, element));
         }
 
         CREATED.broadcast(new ComponentActionEventArgs((WebComponent)baseComponent));
@@ -85,23 +60,9 @@ public class RelativeCreateService extends ComponentCreateService {
         return componentList;
     }
 
-    private boolean inShadowContext() {
-        var component = (WebComponent)baseComponent;
-
-        while (component != null) {
-            if (component instanceof ShadowRoot) return true;
-            component = component.getParentComponent();
-        }
-
-        return false;
-    }
-
-    protected <TComponent extends WebComponent, TFindStrategy extends FindStrategy> TComponent createFromParentComponent(Class<TComponent> componentClass, TFindStrategy findStrategy) {
-        var element = findStrategy.convert(baseComponent.getWrappedElement()).first();
-        var newComponent = createInstance(componentClass, findStrategy, element);
-        newComponent.setParentComponent((WebComponent)baseComponent);
-
-        return newComponent;
+    @Override
+    protected WebElement locate(FindStrategy findStrategy) {
+        return findStrategy.convert(baseComponent.getWrappedElement());
     }
 
     protected <TComponent extends WebComponent, TFindStrategy extends FindStrategy> TComponent createFromParentComponent(Class<TComponent> componentClass, TFindStrategy findStrategy, WebElement element) {

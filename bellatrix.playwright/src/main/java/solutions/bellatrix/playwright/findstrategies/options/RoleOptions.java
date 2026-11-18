@@ -19,6 +19,10 @@ import com.microsoft.playwright.Page;
 import java.util.function.Function;
 
 public class RoleOptions extends Options<Page.GetByRoleOptions, Locator.GetByRoleOptions> {
+    public RoleOptions() {
+        super(new Page.GetByRoleOptions(), new Locator.GetByRoleOptions());
+    }
+
     private void setAbsolute(Function<Page.GetByRoleOptions, Page.GetByRoleOptions> method) {
         invokeAbsolute(method);
     }

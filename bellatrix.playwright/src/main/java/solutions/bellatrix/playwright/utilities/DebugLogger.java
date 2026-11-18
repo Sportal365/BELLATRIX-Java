@@ -14,6 +14,8 @@
 package solutions.bellatrix.playwright.utilities;
 
 import lombok.experimental.UtilityClass;
+import org.opentest4j.AssertionFailedError;
+import solutions.bellatrix.core.utilities.SecretMasker;
 import solutions.bellatrix.playwright.utilities.functionalinterfaces.Assertable;
 
 // ToDo rename class and method or remove altogether
@@ -22,6 +24,8 @@ public class DebugLogger {
     public void assertAndLogOnFail(Assertable assertion, String infoLog) {
         try {
             assertion.perform();
+        } catch (AssertionError failure) {
+            throw new AssertionFailedError(SecretMasker.mask(infoLog), failure);
         } catch (Exception exception) {
             throw new IllegalArgumentException(String.format("%s\n%s", infoLog, exception));
         }
